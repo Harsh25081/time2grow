@@ -1,0 +1,4 @@
+interface:
+  display_name: "Telugu Ad Script Generator"
+  short_description: "Scene-based Telugu ad scripts"
+  default_prompt: "Use $telugu-ad-script-generator to create three scene-based Telugu ad scripts from this client brief."

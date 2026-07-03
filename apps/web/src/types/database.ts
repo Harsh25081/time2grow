@@ -1,0 +1,337 @@
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
+export type Database = {
+  public: {
+    Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          full_name: string | null;
+          persona: 'creator' | 'founder' | 'coach' | 'local_business' | 'agency';
+          demo_mode: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          full_name?: string | null;
+          persona?: 'creator' | 'founder' | 'coach' | 'local_business' | 'agency';
+          demo_mode?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          full_name?: string | null;
+          persona?: 'creator' | 'founder' | 'coach' | 'local_business' | 'agency';
+          demo_mode?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      organizations: {
+        Row: {
+          id: string;
+          name: string;
+          slug: string | null;
+          org_type: 'solo' | 'agency' | 'company';
+          plan_key: string;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          slug?: string | null;
+          org_type?: 'solo' | 'agency' | 'company';
+          plan_key?: string;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          slug?: string | null;
+          org_type?: 'solo' | 'agency' | 'company';
+          plan_key?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      organization_memberships: {
+        Row: {
+          id: string;
+          org_id: string;
+          user_id: string;
+          role: 'owner' | 'admin' | 'editor' | 'viewer' | 'billing_admin';
+          status: 'active' | 'invited' | 'suspended';
+          invited_by: string | null;
+          joined_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          user_id: string;
+          role?: 'owner' | 'admin' | 'editor' | 'viewer' | 'billing_admin';
+          status?: 'active' | 'invited' | 'suspended';
+          invited_by?: string | null;
+          joined_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          role?: 'owner' | 'admin' | 'editor' | 'viewer' | 'billing_admin';
+          status?: 'active' | 'invited' | 'suspended';
+          joined_at?: string | null;
+        };
+        Relationships: [];
+      };
+      campaigns: {
+        Row: {
+          id: string;
+          org_id: string;
+          name: string;
+          type: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
+          status: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
+          objective: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          name: string;
+          type?: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
+          status?: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
+          objective?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          name?: string;
+          type?: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
+          status?: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
+          objective?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      content_items: {
+        Row: {
+          id: string;
+          org_id: string;
+          campaign_id: string | null;
+          content_type: 'post' | 'poster' | 'video';
+          title: string;
+          body: string | null;
+          media_url: string | null;
+          status: 'draft' | 'ready' | 'queued' | 'published' | 'archived';
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          campaign_id?: string | null;
+          content_type?: 'post' | 'poster' | 'video';
+          title: string;
+          body?: string | null;
+          media_url?: string | null;
+          status?: 'draft' | 'ready' | 'queued' | 'published' | 'archived';
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          campaign_id?: string | null;
+          content_type?: 'post' | 'poster' | 'video';
+          title?: string;
+          body?: string | null;
+          media_url?: string | null;
+          status?: 'draft' | 'ready' | 'queued' | 'published' | 'archived';
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      social_posts: {
+        Row: {
+          id: string;
+          org_id: string;
+          title: string;
+          body: string | null;
+          media_url: string | null;
+          campaign_id: string | null;
+          content_item_id: string | null;
+          content_type: 'post' | 'poster' | 'video';
+          status: 'draft' | 'queued' | 'publishing' | 'published' | 'partial_failed' | 'failed' | 'cancelled';
+          scheduled_at: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          title: string;
+          body?: string | null;
+          media_url?: string | null;
+          campaign_id?: string | null;
+          content_item_id?: string | null;
+          content_type?: 'post' | 'poster' | 'video';
+          status?: 'draft' | 'queued' | 'publishing' | 'published' | 'partial_failed' | 'failed' | 'cancelled';
+          scheduled_at?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          title?: string;
+          body?: string | null;
+          media_url?: string | null;
+          campaign_id?: string | null;
+          content_item_id?: string | null;
+          content_type?: 'post' | 'poster' | 'video';
+          status?: 'draft' | 'queued' | 'publishing' | 'published' | 'partial_failed' | 'failed' | 'cancelled';
+          scheduled_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      publish_targets: {
+        Row: {
+          id: string;
+          org_id: string;
+          social_post_id: string;
+          distribution_handle_id: string | null;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          target_label: string;
+          status: 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
+          external_post_id: string | null;
+          provider_response: Json;
+          error_message: string | null;
+          attempts: number;
+          last_attempt_at: string | null;
+          published_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          social_post_id: string;
+          distribution_handle_id?: string | null;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          target_label: string;
+          status?: 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
+          external_post_id?: string | null;
+          provider_response?: Json;
+          error_message?: string | null;
+          attempts?: number;
+          last_attempt_at?: string | null;
+          published_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          status?: 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
+          external_post_id?: string | null;
+          provider_response?: Json;
+          error_message?: string | null;
+          attempts?: number;
+          last_attempt_at?: string | null;
+          published_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };      social_media_assets: {
+        Row: {
+          id: string;
+          org_id: string;
+          social_post_id: string | null;
+          media_type: 'poster' | 'video' | 'image' | 'document';
+          file_name: string;
+          mime_type: string | null;
+          size_bytes: number | null;
+          storage_bucket: string;
+          storage_path: string;
+          external_url: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          social_post_id?: string | null;
+          media_type: 'poster' | 'video' | 'image' | 'document';
+          file_name: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          storage_bucket?: string;
+          storage_path: string;
+          external_url?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          social_post_id?: string | null;
+          media_type?: 'poster' | 'video' | 'image' | 'document';
+          file_name?: string;
+          mime_type?: string | null;
+          size_bytes?: number | null;
+          storage_path?: string;
+          external_url?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };      distribution_handles: {
+        Row: {
+          id: string;
+          org_id: string;
+          integration_account_id: string | null;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
+          display_name: string;
+          external_handle_id: string | null;
+          is_enabled: boolean;
+          default_for_provider: boolean;
+          metadata: Json;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          integration_account_id?: string | null;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
+          display_name: string;
+          external_handle_id?: string | null;
+          is_enabled?: boolean;
+          default_for_provider?: boolean;
+          metadata?: Json;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          display_name?: string;
+          external_handle_id?: string | null;
+          is_enabled?: boolean;
+          default_for_provider?: boolean;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};

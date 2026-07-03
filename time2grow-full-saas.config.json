@@ -1,0 +1,690 @@
+{
+    "config_version":  "1.0.0",
+    "app":  {
+                "name":  "time2grow",
+                "product_type":  "ai_growth_saas",
+                "primary_user":  "solopreneurs_and_creators",
+                "production_goal":  "full_saas_ready",
+                "default_timezone":  "Asia/Kolkata",
+                "default_currency":  "INR",
+                "support_email":  "support@time2grow.example",
+                "security_email":  "security@time2grow.example",
+                "legal_email":  "legal@time2grow.example"
+            },
+    "environments":  {
+                         "local":  {
+                                       "purpose":  "developer_workstation",
+                                       "uses_real_billing":  false,
+                                       "uses_real_social_posting":  false,
+                                       "allowed_domains":  [
+                                                               "localhost",
+                                                               "127.0.0.1"
+                                                           ]
+                                   },
+                         "staging":  {
+                                         "purpose":  "pre_production_testing",
+                                         "uses_real_billing":  false,
+                                         "uses_real_social_posting":  false,
+                                         "requires_separate_supabase_project":  true,
+                                         "requires_separate_openai_key":  true,
+                                         "requires_separate_billing_sandbox":  true
+                                     },
+                         "production":  {
+                                            "purpose":  "customer_facing_saas",
+                                            "uses_real_billing":  true,
+                                            "uses_real_social_posting":  true,
+                                            "requires_separate_supabase_project":  true,
+                                            "requires_separate_openai_key":  true,
+                                            "requires_monitoring":  true,
+                                            "requires_backups":  true,
+                                            "requires_incident_response":  true
+                                        }
+                     },
+    "required_environment_variables":  {
+                                           "public_frontend":  [
+                                                                   "VITE_APP_ENV",
+                                                                   "VITE_APP_NAME",
+                                                                   "VITE_APP_URL",
+                                                                   "VITE_SUPABASE_URL",
+                                                                   "VITE_SUPABASE_ANON_KEY",
+                                                                   "VITE_BILLING_PROVIDER",
+                                                                   "VITE_SUPPORT_EMAIL"
+                                                               ],
+                                           "server_only":  [
+                                                               "SUPABASE_SERVICE_ROLE_KEY",
+                                                               "SUPABASE_JWT_SECRET",
+                                                               "OPENAI_API_KEY",
+                                                               "AI_DAILY_ACCOUNT_CAP",
+                                                               "AI_DAILY_ORG_CAP",
+                                                               "AI_MONTHLY_SPEND_CAP_INR",
+                                                               "BILLING_PROVIDER",
+                                                               "RAZORPAY_KEY_ID",
+                                                               "RAZORPAY_KEY_SECRET",
+                                                               "RAZORPAY_WEBHOOK_SECRET",
+                                                               "STRIPE_SECRET_KEY",
+                                                               "STRIPE_WEBHOOK_SECRET",
+                                                               "RESEND_API_KEY",
+                                                               "SENTRY_DSN",
+                                                               "UPTIME_WEBHOOK_URL",
+                                                               "INTERNAL_ADMIN_SECRET",
+                                                               "DATA_EXPORT_BUCKET",
+                                                               "AUDIT_LOG_RETENTION_DAYS",
+                                                               "WEBHOOK_SIGNING_SECRET",
+                                                               "META_CLIENT_ID",
+                                                               "META_CLIENT_SECRET",
+                                                               "META_WEBHOOK_APP_SECRET",
+                                                               "META_WEBHOOK_VERIFY_TOKEN",
+                                                               "GOOGLE_CLIENT_ID",
+                                                               "GOOGLE_CLIENT_SECRET",
+                                                               "GOOGLE_OAUTH_REDIRECT_URI",
+                                                               "GOOGLE_ADS_DEVELOPER_TOKEN",
+                                                               "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+                                                               "WHATSAPP_ACCESS_TOKEN",
+                                                               "WHATSAPP_BUSINESS_ACCOUNT_ID",
+                                                               "WHATSAPP_PHONE_NUMBER_ID",
+                                                               "WHATSAPP_WEBHOOK_APP_SECRET",
+                                                               "WHATSAPP_WEBHOOK_VERIFY_TOKEN",
+                                                               "LINKEDIN_CLIENT_ID",
+                                                               "LINKEDIN_CLIENT_SECRET",
+                                                               "LINKEDIN_WEBHOOK_SECRET",
+                                                               "SLACK_CLIENT_ID",
+                                                               "SLACK_CLIENT_SECRET",
+                                                               "SLACK_SIGNING_SECRET",
+                                                               "SLACK_BOT_TOKEN",
+                                                               "TELEGRAM_BOT_TOKEN",
+                                                               "TELEGRAM_WEBHOOK_SECRET"
+                                                           ],
+                                           "never_commit":  [
+                                                                ".env",
+                                                                ".env.local",
+                                                                ".env.production",
+                                                                ".env.staging",
+                                                                "service_role_key",
+                                                                "openai_api_key",
+                                                                "billing_secrets",
+                                                                "oauth_tokens",
+                                                                "webhook_secrets"
+                                                            ]
+                                       },
+    "feature_flags":  {
+                          "demo_mode":  {
+                                            "enabled_in_local":  true,
+                                            "enabled_in_staging":  true,
+                                            "enabled_in_production":  false
+                                        },
+                          "real_ai":  {
+                                          "enabled_in_local":  true,
+                                          "enabled_in_staging":  true,
+                                          "enabled_in_production":  true
+                                      },
+                          "real_billing":  {
+                                               "enabled_in_local":  false,
+                                               "enabled_in_staging":  false,
+                                               "enabled_in_production":  true
+                                           },
+                          "real_social_posting":  {
+                                                      "enabled_in_local":  false,
+                                                      "enabled_in_staging":  false,
+                                                      "enabled_in_production":  true
+                                                  },
+                          "team_workspaces":  {
+                                                  "enabled_in_local":  true,
+                                                  "enabled_in_staging":  true,
+                                                  "enabled_in_production":  true
+                                              },
+                          "enterprise_sso":  {
+                                                 "enabled_in_local":  false,
+                                                 "enabled_in_staging":  false,
+                                                 "enabled_in_production":  false,
+                                                 "launch_phase":  "enterprise_readiness"
+                                             }
+                      },
+    "auth":  {
+                 "provider":  "supabase_auth",
+                 "enabled_methods":  [
+                                         "email_password",
+                                         "password_reset",
+                                         "magic_link_optional"
+                                     ],
+                 "mfa_required_for_roles":  [
+                                                "owner",
+                                                "admin",
+                                                "billing_admin"
+                                            ],
+                 "password_policy":  {
+                                         "minimum_length":  12,
+                                         "require_uppercase":  true,
+                                         "require_lowercase":  true,
+                                         "require_number":  true,
+                                         "require_symbol":  true
+                                     },
+                 "session_policy":  {
+                                        "idle_timeout_minutes":  60,
+                                        "absolute_timeout_days":  14,
+                                        "allow_session_revocation":  true,
+                                        "show_active_sessions":  true
+                                    },
+                 "rate_limits":  {
+                                     "login_attempts_per_ip_per_hour":  20,
+                                     "password_reset_per_email_per_hour":  3,
+                                     "signup_per_ip_per_hour":  10
+                                 }
+             },
+    "tenancy":  {
+                    "model":  "organization_workspace",
+                    "supports_solo_workspace":  true,
+                    "required_tables":  [
+                                            "organizations",
+                                            "organization_memberships",
+                                            "organization_invitations"
+                                        ],
+                    "shared_tables_must_include":  [
+                                                       "org_id",
+                                                       "created_by",
+                                                       "updated_by"
+                                                   ],
+                    "rls_requirements":  [
+                                             "users_can_access_only_orgs_they_belong_to",
+                                             "solo_users_get_a_default_org",
+                                             "org_a_cannot_read_org_b_data",
+                                             "viewer_cannot_create_update_or_delete",
+                                             "billing_admin_can_manage_billing_only",
+                                             "owner_can_transfer_ownership"
+                                         ]
+                },
+    "rbac":  {
+                 "roles":  {
+                               "owner":  {
+                                             "description":  "Full workspace control including billing, members, integrations, and deletion.",
+                                             "permissions":  [
+                                                                 "workspace.manage",
+                                                                 "members.manage",
+                                                                 "billing.manage",
+                                                                 "integrations.manage",
+                                                                 "content.manage",
+                                                                 "leads.manage",
+                                                                 "analytics.view",
+                                                                 "audit_logs.view",
+                                                                 "workspace.delete"
+                                                             ]
+                                         },
+                               "admin":  {
+                                             "description":  "Operational admin without ownership transfer or workspace deletion.",
+                                             "permissions":  [
+                                                                 "members.invite",
+                                                                 "integrations.manage",
+                                                                 "content.manage",
+                                                                 "leads.manage",
+                                                                 "analytics.view",
+                                                                 "audit_logs.view"
+                                                             ]
+                                         },
+                               "editor":  {
+                                              "description":  "Can create and manage growth work, but cannot manage billing or members.",
+                                              "permissions":  [
+                                                                  "content.manage",
+                                                                  "campaigns.manage",
+                                                                  "posts.manage",
+                                                                  "leads.manage",
+                                                                  "analytics.view"
+                                                              ]
+                                          },
+                               "viewer":  {
+                                              "description":  "Read-only access.",
+                                              "permissions":  [
+                                                                  "content.view",
+                                                                  "campaigns.view",
+                                                                  "leads.view",
+                                                                  "analytics.view"
+                                                              ]
+                                          },
+                               "billing_admin":  {
+                                                     "description":  "Can manage plan, invoices, and payment method only.",
+                                                     "permissions":  [
+                                                                         "billing.manage",
+                                                                         "invoices.view",
+                                                                         "usage.view"
+                                                                     ]
+                                                 }
+                           },
+                 "enforcement":  [
+                                     "front_end_hides_unavailable_actions",
+                                     "database_rls_enforces_final_access",
+                                     "edge_functions_validate_role_before_sensitive_actions"
+                                 ]
+             },
+    "database":  {
+                     "provider":  "supabase_postgres",
+                     "must_enable_rls_on_all_user_and_org_tables":  true,
+                     "core_v1_tables":  [
+                                            "profiles",
+                                            "business_dna",
+                                            "campaigns",
+                                            "content",
+                                            "posters",
+                                            "posts",
+                                            "inbox_messages",
+                                            "leads",
+                                            "trends",
+                                            "competitors",
+                                            "maya_messages",
+                                            "activity"
+                                        ],
+                     "full_saas_tables":  [
+                                              "organizations",
+                                              "organization_memberships",
+                                              "organization_invitations",
+                                              "billing_customers",
+                                              "billing_subscriptions",
+                                              "billing_invoices",
+                                              "plans",
+                                              "entitlements",
+                                              "usage_events",
+                                              "usage_rollups",
+                                              "audit_logs",
+                                              "webhook_events",
+                                              "integration_accounts",
+                                              "oauth_tokens_encrypted",
+                                              "api_keys",
+                                              "data_exports",
+                                              "deletion_requests",
+                                              "support_access_sessions",
+                                              "incidents",
+                                              "security_events",
+                                              "distribution_handles",
+                                              "social_posts",
+                                              "publish_targets",
+                                              "google_ads_campaigns",
+                                              "whatsapp_message_templates"
+                                          ],
+                     "migration_rules":  [
+                                             "all_schema_changes_go_through_migrations",
+                                             "production_migrations_require_staging_success",
+                                             "no_manual_production_schema_edits",
+                                             "migration_rollbacks_must_be_documented"
+                                         ]
+                 },
+    "billing":  {
+                    "primary_provider":  "razorpay",
+                    "secondary_provider":  "stripe_optional_for_global_customers",
+                    "webhook_policy":  {
+                                           "verify_signature":  true,
+                                           "store_raw_event":  true,
+                                           "idempotency_required":  true,
+                                           "retry_safe":  true
+                                       },
+                    "plans":  {
+                                  "free":  {
+                                               "monthly_price_inr":  0,
+                                               "seats":  1,
+                                               "ai_calls_per_month":  50,
+                                               "campaigns":  2,
+                                               "leads":  100,
+                                               "scheduled_posts":  25,
+                                               "connected_channels":  0,
+                                               "support":  "community"
+                                           },
+                                  "starter":  {
+                                                  "monthly_price_inr":  999,
+                                                  "seats":  1,
+                                                  "ai_calls_per_month":  1000,
+                                                  "campaigns":  10,
+                                                  "leads":  1000,
+                                                  "scheduled_posts":  250,
+                                                  "connected_channels":  2,
+                                                  "support":  "email"
+                                              },
+                                  "growth":  {
+                                                 "monthly_price_inr":  2999,
+                                                 "seats":  5,
+                                                 "ai_calls_per_month":  5000,
+                                                 "campaigns":  50,
+                                                 "leads":  10000,
+                                                 "scheduled_posts":  1000,
+                                                 "connected_channels":  5,
+                                                 "support":  "priority_email"
+                                             },
+                                  "agency":  {
+                                                 "monthly_price_inr":  9999,
+                                                 "seats":  20,
+                                                 "ai_calls_per_month":  25000,
+                                                 "campaigns":  250,
+                                                 "leads":  100000,
+                                                 "scheduled_posts":  5000,
+                                                 "connected_channels":  20,
+                                                 "support":  "priority_email_and_account_review"
+                                             }
+                              },
+                    "entitlement_enforcement":  [
+                                                    "server_side_before_ai_call",
+                                                    "server_side_before_post_scheduling",
+                                                    "server_side_before_channel_connection",
+                                                    "server_side_before_member_invite"
+                                                ]
+                },
+    "usage_metering":  {
+                           "tracked_events":  [
+                                                  "ai.call",
+                                                  "content.created",
+                                                  "post.scheduled",
+                                                  "lead.created",
+                                                  "member.invited",
+                                                  "channel.connected",
+                                                  "storage.uploaded",
+                                                  "data.exported"
+                                              ],
+                           "rollup_windows":  [
+                                                  "daily",
+                                                  "monthly"
+                                              ],
+                           "hard_limit_behavior":  "block_action_with_upgrade_message",
+                           "soft_limit_behavior":  "warn_at_80_percent"
+                       },
+    "ai":  {
+               "provider":  "openai",
+               "server_side_only":  true,
+               "edge_function":  "ai-handler",
+               "default_model":  "gpt-4o-mini",
+               "high_quality_model":  "model_to_select_before_paid_beta",
+               "cost_controls":  {
+                                     "per_user_daily_cap":  true,
+                                     "per_org_daily_cap":  true,
+                                     "monthly_spend_cap":  true,
+                                     "plan_based_limits":  true
+                                 },
+               "safety_controls":  [
+                                       "input_validation",
+                                       "prompt_injection_checks",
+                                       "output_moderation",
+                                       "tenant_scoped_context_only",
+                                       "no_secrets_in_prompts",
+                                       "no_payment_data_in_prompts",
+                                       "safe_ai_failure_message"
+                                   ],
+               "audit_ai_actions":  true
+           },
+    "integrations":  {
+                         "v1_demo_policy":  "mock_external_channels_until_each_channel_is_reviewed",
+                         "production_policy":  "each_live_channel_requires_oauth_review_token_storage_and_webhook_security",
+                         "planned_channels":  [
+                                                  "facebook",
+                                                  "instagram",
+                                                  "linkedin",
+                                                  "youtube",
+                                                  "google_ads",
+                                                  "whatsapp",
+                                                  "slack",
+                                                  "telegram"
+                                              ],
+                         "oauth_requirements":  [
+                                                    "tokens_encrypted_at_rest",
+                                                    "refresh_tokens_never_exposed_to_browser",
+                                                    "revocation_supported",
+                                                    "webhook_signatures_verified",
+                                                    "provider_rate_limits_respected"
+                                                ],
+                         "priority_distribution_channels":  [
+                                                                {
+                                                                    "provider":  "facebook",
+                                                                    "product":  "Facebook Pages",
+                                                                    "target_type":  "page",
+                                                                    "publish_mode":  "page_feed_and_media_posts",
+                                                                    "status":  "priority_v1_mock_v2_live",
+                                                                    "required_secret_keys":  [
+                                                                                                 "META_CLIENT_ID",
+                                                                                                 "META_CLIENT_SECRET",
+                                                                                                 "META_WEBHOOK_APP_SECRET"
+                                                                                             ]
+                                                                },
+                                                                {
+                                                                    "provider":  "instagram",
+                                                                    "product":  "Instagram Business",
+                                                                    "target_type":  "business_account",
+                                                                    "publish_mode":  "media_container_then_publish",
+                                                                    "status":  "priority_v1_mock_v2_live",
+                                                                    "required_secret_keys":  [
+                                                                                                 "META_CLIENT_ID",
+                                                                                                 "META_CLIENT_SECRET",
+                                                                                                 "META_WEBHOOK_APP_SECRET"
+                                                                                             ]
+                                                                },
+                                                                {
+                                                                    "provider":  "youtube",
+                                                                    "product":  "YouTube Channels",
+                                                                    "target_type":  "channel",
+                                                                    "publish_mode":  "video_upload",
+                                                                    "status":  "priority_v1_mock_v2_live",
+                                                                    "required_secret_keys":  [
+                                                                                                 "GOOGLE_CLIENT_ID",
+                                                                                                 "GOOGLE_CLIENT_SECRET"
+                                                                                             ]
+                                                                },
+                                                                {
+                                                                    "provider":  "google_ads",
+                                                                    "product":  "Google Ads",
+                                                                    "target_type":  "ads_customer_account",
+                                                                    "publish_mode":  "campaign_ad_group_ad_mutations",
+                                                                    "status":  "priority_v1_mock_v2_live",
+                                                                    "required_secret_keys":  [
+                                                                                                 "GOOGLE_CLIENT_ID",
+                                                                                                 "GOOGLE_CLIENT_SECRET",
+                                                                                                 "GOOGLE_ADS_DEVELOPER_TOKEN"
+                                                                                             ]
+                                                                },
+                                                                {
+                                                                    "provider":  "whatsapp",
+                                                                    "product":  "WhatsApp Business Platform",
+                                                                    "target_type":  "phone_number",
+                                                                    "publish_mode":  "approved_template_messages",
+                                                                    "status":  "priority_v1_mock_v2_live",
+                                                                    "required_secret_keys":  [
+                                                                                                 "WHATSAPP_ACCESS_TOKEN",
+                                                                                                 "WHATSAPP_BUSINESS_ACCOUNT_ID",
+                                                                                                 "WHATSAPP_PHONE_NUMBER_ID",
+                                                                                                 "WHATSAPP_WEBHOOK_APP_SECRET"
+                                                                                             ]
+                                                                }
+                                                            ],
+                         "one_click_distribution_requirements":  [
+                                                                     "store_oauth_tokens_encrypted_server_side",
+                                                                     "select_targets_per_post",
+                                                                     "create_one_publish_targets_row_per_handle",
+                                                                     "dispatch_with_background_worker",
+                                                                     "track_success_failure_rate_limit_per_target",
+                                                                     "retry_failed_targets_safely",
+                                                                     "audit_every_live_send"
+                                                                 ]
+                     },
+    "security":  {
+                     "secrets_policy":  {
+                                            "store_runtime_secrets_in_provider_secret_manager":  true,
+                                            "commit_env_files":  false,
+                                            "github_secret_scanning_required":  true,
+                                            "rotate_keys_every_days":  90,
+                                            "rotate_immediately_after_exposure":  true
+                                        },
+                     "rate_limits":  {
+                                         "api_requests_per_ip_per_minute":  120,
+                                         "ai_requests_per_user_per_day":  100,
+                                         "ai_requests_per_org_per_day":  1000,
+                                         "webhook_events_per_provider_per_minute":  600
+                                     },
+                     "audit_events":  [
+                                          "auth.login",
+                                          "auth.logout",
+                                          "auth.password_reset",
+                                          "auth.mfa_enabled",
+                                          "org.created",
+                                          "org.member_invited",
+                                          "org.member_removed",
+                                          "org.role_changed",
+                                          "billing.subscription_created",
+                                          "billing.payment_failed",
+                                          "billing.plan_changed",
+                                          "integration.connected",
+                                          "integration.disconnected",
+                                          "ai.action",
+                                          "data.export_requested",
+                                          "data.delete_requested",
+                                          "admin.support_access_started",
+                                          "admin.support_access_ended"
+                                      ],
+                     "headers":  {
+                                     "content_security_policy":  "required",
+                                     "x_frame_options":  "DENY",
+                                     "referrer_policy":  "strict-origin-when-cross-origin",
+                                     "permissions_policy":  "required"
+                                 }
+                 },
+    "observability":  {
+                          "error_tracking":  "sentry_or_equivalent",
+                          "uptime_monitoring":  "required",
+                          "log_retention_days":  90,
+                          "alerts":  [
+                                         "production_down",
+                                         "edge_function_error_spike",
+                                         "ai_error_spike",
+                                         "billing_webhook_failure",
+                                         "database_error_spike",
+                                         "auth_abuse_detected",
+                                         "monthly_ai_spend_80_percent",
+                                         "backup_failure"
+                                     ],
+                          "dashboards":  [
+                                             "product_usage",
+                                             "ai_cost",
+                                             "billing_health",
+                                             "integration_health",
+                                             "security_events"
+                                         ]
+                      },
+    "backup_and_recovery":  {
+                                "database_backups_required":  true,
+                                "backup_frequency":  "daily",
+                                "point_in_time_recovery":  "required_for_paid_beta",
+                                "restore_test_frequency":  "monthly",
+                                "rto_hours":  4,
+                                "rpo_hours":  24,
+                                "disaster_recovery_runbook_required":  true
+                            },
+    "privacy_and_compliance":  {
+                                   "target_baseline":  [
+                                                           "DPDP_ready",
+                                                           "GDPR_basics_ready"
+                                                       ],
+                                   "required_documents":  [
+                                                              "terms_of_service",
+                                                              "privacy_policy",
+                                                              "acceptable_use_policy",
+                                                              "data_retention_policy",
+                                                              "subprocessors_list",
+                                                              "cookie_notice_if_tracking_is_used"
+                                                          ],
+                                   "user_rights":  [
+                                                       "data_export",
+                                                       "account_delete",
+                                                       "lead_delete",
+                                                       "workspace_delete",
+                                                       "consent_withdrawal"
+                                                   ],
+                                   "data_retention":  {
+                                                          "audit_logs_days":  365,
+                                                          "deleted_account_purge_days":  30,
+                                                          "support_access_logs_days":  365,
+                                                          "billing_records_years":  8
+                                                      }
+                               },
+    "admin_and_support":  {
+                              "internal_admin_dashboard_required":  true,
+                              "support_impersonation_allowed":  false,
+                              "support_access_model":  "time_bound_audited_support_session",
+                              "admin_mfa_required":  true,
+                              "admin_allowed_roles":  [
+                                                          "internal_super_admin",
+                                                          "support_admin",
+                                                          "billing_support"
+                                                      ],
+                              "admin_actions_must_be_audited":  true
+                          },
+    "ci_cd":  {
+                  "required_checks_before_merge":  [
+                                                       "lint",
+                                                       "typecheck",
+                                                       "unit_tests",
+                                                       "build",
+                                                       "migration_validation",
+                                                       "rls_policy_tests",
+                                                       "secret_scan",
+                                                       "dependency_vulnerability_scan"
+                                                   ],
+                  "required_checks_before_production_deploy":  [
+                                                                   "staging_deploy_success",
+                                                                   "staging_smoke_tests",
+                                                                   "billing_webhook_tests",
+                                                                   "auth_flow_tests",
+                                                                   "ai_handler_tests",
+                                                                   "backup_status_check"
+                                                               ],
+                  "deployment_rules":  [
+                                           "main_branch_deploys_to_staging",
+                                           "manual_approval_required_for_production",
+                                           "rollback_plan_required_for_migrations"
+                                       ]
+              },
+    "step_by_step_process":  [
+                                 "Freeze V1 demo scope and verify there are no secrets in GitHub.",
+                                 "Create separate local, staging, and production environments.",
+                                 "Add organizations, memberships, roles, invitations, and org_id to shared tables.",
+                                 "Rewrite and test all RLS policies for user and organization isolation.",
+                                 "Add RBAC in the UI, database policies, and Edge Functions.",
+                                 "Add billing provider, plans, subscriptions, invoices, and webhook handling.",
+                                 "Add usage metering and server-side entitlement checks.",
+                                 "Add audit logs, security events, and limited admin tooling.",
+                                 "Add monitoring, uptime checks, alerts, and error tracking.",
+                                 "Add backup, restore testing, RTO, RPO, and disaster recovery runbook.",
+                                 "Add CI/CD gates for builds, migrations, RLS tests, auth tests, billing tests, and secret scans.",
+                                 "Add legal and privacy workflows: terms, privacy policy, acceptable use, export, delete, and retention.",
+                                 "Add AI safety controls for prompt injection, tenant boundaries, moderation, and failure handling.",
+                                 "Run private beta with real users and sandbox billing.",
+                                 "Run paid beta with live billing and conservative limits.",
+                                 "Launch production SaaS only after all launch gates pass."
+                             ],
+    "launch_gates":  {
+                         "private_beta":  [
+                                              "auth_works",
+                                              "onboarding_works",
+                                              "ai_handler_works",
+                                              "demo_mode_is_honest",
+                                              "no_secrets_in_repo",
+                                              "basic_rls_tests_pass"
+                                          ],
+                         "paid_beta":  [
+                                           "billing_sandbox_passed",
+                                           "usage_metering_works",
+                                           "plan_limits_enforced_server_side",
+                                           "audit_logs_enabled",
+                                           "monitoring_enabled",
+                                           "privacy_policy_published",
+                                           "backup_restore_test_passed"
+                                       ],
+                         "production_saas":  [
+                                                 "org_isolation_tests_pass",
+                                                 "rbac_tests_pass",
+                                                 "live_billing_webhooks_verified",
+                                                 "rate_limits_enabled",
+                                                 "secret_scanning_enabled",
+                                                 "dependency_scanning_enabled",
+                                                 "production_monitoring_enabled",
+                                                 "incident_response_runbook_ready",
+                                                 "data_export_and_delete_workflows_pass",
+                                                 "full_mobile_smoke_test_passes"
+                                             ],
+                         "enterprise_readiness":  [
+                                                      "sso_available",
+                                                      "advanced_audit_exports",
+                                                      "custom_data_retention",
+                                                      "security_questionnaire_ready",
+                                                      "soc2_or_iso27001_path_defined"
+                                                  ]
+                     }
+}

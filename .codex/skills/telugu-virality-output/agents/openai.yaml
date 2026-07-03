@@ -1,0 +1,4 @@
+interface:
+  display_name: "Telugu Virality Output"
+  short_description: "Optimize Telugu creator scoring and scripts"
+  default_prompt: "Use $telugu-virality-output to improve a Telugu creator virality report and script variations."

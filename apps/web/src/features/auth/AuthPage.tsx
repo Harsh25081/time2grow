@@ -1,0 +1,217 @@
+import { FormEvent, useMemo, useState } from 'react';
+import { ArrowRight, KeyRound, Loader2, Mail, ShieldCheck, UserPlus } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
+import { env } from '../../lib/env';
+import { useAuth } from './AuthProvider';
+
+type AuthMode = 'signin' | 'signup' | 'reset';
+
+const modeCopy: Record<AuthMode, { title: string; action: string; icon: typeof Mail }> = {
+  signin: {
+    title: 'Sign in to time2grow',
+    action: 'Sign in',
+    icon: Mail,
+  },
+  signup: {
+    title: 'Create your workspace',
+    action: 'Create account',
+    icon: UserPlus,
+  },
+  reset: {
+    title: 'Reset your password',
+    action: 'Send reset link',
+    icon: KeyRound,
+  },
+};
+
+export function AuthPage() {
+  const { configured, session } = useAuth();
+  const [mode, setMode] = useState<AuthMode>('signin');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  const copy = modeCopy[mode];
+  const Icon = copy.icon;
+
+  const canSubmit = useMemo(() => {
+    if (!configured || !email.trim()) {
+      return false;
+    }
+
+    if (mode === 'reset') {
+      return true;
+    }
+
+    return password.length >= 8;
+  }, [configured, email, mode, password]);
+
+  if (session) {
+    return <Navigate to="/" replace />;
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !canSubmit) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+
+    try {
+      if (mode === 'signin') {
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (signInError) {
+          throw signInError;
+        }
+      }
+
+      if (mode === 'signup') {
+        const { error: signUpError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+            },
+          },
+        });
+
+        if (signUpError) {
+          throw signUpError;
+        }
+
+        setMessage('Account created. Check your inbox if email confirmation is enabled.');
+      }
+
+      if (mode === 'reset') {
+        const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${env.appUrl}/auth`,
+        });
+
+        if (resetError) {
+          throw resetError;
+        }
+
+        setMessage('Password reset link sent.');
+      }
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : 'Authentication failed.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="auth-screen">
+      <section className="auth-panel" aria-label="Authentication">
+        <div className="brand-lockup">
+          <div className="brand-mark">t2g</div>
+          <div>
+            <p className="eyebrow">AI growth workspace</p>
+            <h1>time2grow</h1>
+          </div>
+        </div>
+
+        <div className="auth-card">
+          <div className="auth-card__header">
+            <span className="auth-icon">
+              <Icon size={22} />
+            </span>
+            <div>
+              <h2>{copy.title}</h2>
+              <p>Build, learn, and manage your creator growth loop in one secure workspace.</p>
+            </div>
+          </div>
+
+          {!configured ? (
+            <div className="setup-warning">
+              <ShieldCheck size={22} />
+              <div>
+                <strong>Supabase env vars needed</strong>
+                <span>Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `apps/web/.env.local`.</span>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="segmented-control" role="tablist" aria-label="Authentication mode">
+            {(['signin', 'signup', 'reset'] as const).map((nextMode) => (
+              <button
+                key={nextMode}
+                type="button"
+                className={mode === nextMode ? 'is-active' : ''}
+                onClick={() => {
+                  setMode(nextMode);
+                  setMessage('');
+                  setError('');
+                }}
+              >
+                {nextMode === 'signin' ? 'Sign in' : nextMode === 'signup' ? 'Sign up' : 'Reset'}
+              </button>
+            ))}
+          </div>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            {mode === 'signup' ? (
+              <label>
+                <span>Full name</span>
+                <input
+                  autoComplete="name"
+                  value={fullName}
+                  onChange={(event) => setFullName(event.target.value)}
+                  placeholder="Your name"
+                />
+              </label>
+            ) : null}
+
+            <label>
+              <span>Email</span>
+              <input
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@example.com"
+                required
+              />
+            </label>
+
+            {mode !== 'reset' ? (
+              <label>
+                <span>Password</span>
+                <input
+                  type="password"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="At least 8 characters"
+                  minLength={8}
+                  required
+                />
+              </label>
+            ) : null}
+
+            {message ? <p className="form-message success">{message}</p> : null}
+            {error ? <p className="form-message error">{error}</p> : null}
+
+            <button className="primary-action" type="submit" disabled={!canSubmit || loading}>
+              {loading ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
+              <span>{loading ? 'Working' : copy.action}</span>
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+  );
+}
