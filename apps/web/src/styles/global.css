@@ -2936,6 +2936,13 @@ a {
   padding: 14px;
 }
 
+.ai-poster-image {
+  display: block;
+  object-fit: cover;
+  border-radius: 4px;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
+}
+
 .ai-poster-filmstrip {
   display: flex;
   gap: 12px;

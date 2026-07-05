@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Image as ImageIcon, Loader2, Palette as PaletteIcon, Save, Send, Sparkles, Upload, Wand2, X } from 'lucide-react';
+import { Download, Loader2, Palette as PaletteIcon, Save, Send, Sparkles, Wand2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toPng } from 'html-to-image';
 import { env } from '../../lib/env';
@@ -28,9 +28,29 @@ type PosterConcept = {
   content: PosterContent;
 };
 
+// A finished poster image returned by the AI agent (text baked in).
+type AiPoster = {
+  id: string;
+  title: string;
+  angle: string;
+  imageDataUrl: string;
+  copy: { headline: string; subheadline: string; callToAction: string };
+};
+
+type AgentConcept = {
+  id?: string;
+  title?: string;
+  angle?: string;
+  imageDataUrl?: string;
+  imageUrl?: string;
+  copy?: Partial<PosterContent> & { message?: string };
+};
+
 type PosterAgentPayload = {
   ok?: boolean;
   error?: string;
+  mode?: string;
+  concepts?: AgentConcept[];
   imageDataUrl?: string;
   imageUrl?: string;
   backgroundImageUrl?: string;
@@ -69,10 +89,10 @@ export function PosterStudioAiPage() {
   const [format, setFormat] = useState<PosterFormat>('portrait');
 
   const [concepts, setConcepts] = useState<PosterConcept[]>([]);
+  const [aiPosters, setAiPosters] = useState<AiPoster[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [accentColor, setAccentColor] = useState('');
   const [backgroundColor, setBackgroundColor] = useState('');
-  const [sharedBackgroundImage, setSharedBackgroundImage] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [scale, setScale] = useState(1);
@@ -87,6 +107,8 @@ export function PosterStudioAiPage() {
   const colorSwatches = useMemo(() => buildColorSwatches(brandColors, basePalette.accent), [brandColors, basePalette.accent]);
   const dim = posterDimensions[format];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedId) ?? concepts[0] ?? null, [concepts, selectedId]);
+  const usingAi = aiPosters.length > 0;
+  const selectedAiPoster = useMemo(() => aiPosters.find((poster) => poster.id === selectedId) ?? aiPosters[0] ?? null, [aiPosters, selectedId]);
 
   useEffect(() => {
     let active = true;
@@ -146,13 +168,14 @@ export function PosterStudioAiPage() {
     setMessage('');
     setError('');
 
-    // Deterministic concepts render instantly and never depend on a live AI backend.
+    // Template concepts render instantly and are the fallback if the AI image
+    // backend (n8n / ai-handler) is unreachable.
     const nextConcepts = buildConceptSet(brief, objective, brandName);
     setConcepts(nextConcepts);
+    setAiPosters([]);
     setSelectedId(nextConcepts[0]?.id ?? '');
-    setSharedBackgroundImage('');
+    setMessage('Designing 3 posters with AI. This can take up to a minute...');
 
-    // AI art / copy is an optional enhancement layered on top when a provider responds.
     try {
       const payload = await requestAiPoster({
         brief,
@@ -168,36 +191,22 @@ export function PosterStudioAiPage() {
       });
 
       if (payload && payload.ok !== false) {
-        const image = firstImage(payload);
-        if (image) setSharedBackgroundImage(image);
-
-        const aiHeadline = stringValue(payload.copy?.headline);
-        const aiSub = stringValue(payload.copy?.subheadline) || stringValue(payload.copy?.message);
-        const aiCta = stringValue(payload.copy?.callToAction);
-        if (aiHeadline || aiSub || aiCta) {
-          setConcepts((current) => current.map((concept, index) => (index === 0
-            ? {
-                ...concept,
-                content: {
-                  ...concept.content,
-                  headline: aiHeadline || concept.content.headline,
-                  subheadline: aiSub || concept.content.subheadline,
-                  callToAction: aiCta || concept.content.callToAction,
-                },
-              }
-            : concept)));
+        const posters = extractAiPosters(payload);
+        if (posters.length > 0) {
+          setAiPosters(posters);
+          setSelectedId(posters[0].id);
+          setMessage(`Generated ${posters.length} AI poster${posters.length > 1 ? 's' : ''}. Pick your favourite, then Download, Save, or send to Social Hub.`);
+          return;
         }
-
-        setMessage(image ? 'Created 3 concepts with AI background art. Pick one below, edit, then Download or Save.' : 'Created 3 poster concepts. Pick one below, edit, then Download or Save.');
-        return;
       }
-    } catch {
-      // fall through to deterministic-only result
+
+      setMessage('The AI image service was not reachable, so here are 3 editable template concepts instead. Pick one, edit the text, then export.');
+    } catch (generateError) {
+      setError(errorMessage(generateError, 'The AI image service failed.'));
+      setMessage('Showing 3 editable template concepts instead. Pick one, edit the text, then export.');
     } finally {
       setGenerating(false);
     }
-
-    setMessage('Created 3 poster concepts from your brief. Pick one below, edit, then Download or Save.');
   }
 
   async function renderPng(): Promise<{ dataUrl: string; blob: Blob }> {
@@ -215,12 +224,20 @@ export function PosterStudioAiPage() {
   }
 
   async function handleDownload() {
-    if (!selectedConcept) {
-      setError('Generate concepts first.');
-      return;
-    }
     setError('');
     try {
+      if (usingAi && selectedAiPoster) {
+        const link = document.createElement('a');
+        link.href = selectedAiPoster.imageDataUrl;
+        link.download = fileName(selectedAiPoster.copy.headline || selectedAiPoster.title, dim.exportLabel);
+        link.click();
+        setMessage('Poster downloaded as PNG.');
+        return;
+      }
+      if (!selectedConcept) {
+        setError('Generate posters first.');
+        return;
+      }
       const { dataUrl } = await renderPng();
       const link = document.createElement('a');
       link.href = dataUrl;
@@ -233,15 +250,31 @@ export function PosterStudioAiPage() {
   }
 
   async function handleSave() {
-    if (!supabase || !organization?.id || !user?.id || !selectedConcept) return;
+    if (!supabase || !organization?.id || !user?.id) return;
     setSaving(true);
     setMessage('');
     setError('');
 
     try {
-      const { blob } = await renderPng();
-      const content = selectedConcept.content;
-      const name = fileName(content.headline, dim.exportLabel);
+      let blob: Blob;
+      let title: string;
+      let body: string;
+
+      if (usingAi && selectedAiPoster) {
+        blob = await sourceToBlob(selectedAiPoster.imageDataUrl);
+        title = selectedAiPoster.copy.headline || selectedAiPoster.title;
+        body = [selectedAiPoster.copy.headline, selectedAiPoster.copy.subheadline, selectedAiPoster.copy.callToAction].filter(Boolean).join('\n');
+      } else if (selectedConcept) {
+        blob = (await renderPng()).blob;
+        const content = selectedConcept.content;
+        title = content.headline;
+        body = [content.headline, content.subheadline, content.offer, content.callToAction].filter(Boolean).join('\n');
+      } else {
+        setSaving(false);
+        return;
+      }
+
+      const name = fileName(title, dim.exportLabel);
       const storagePath = organization.id + '/poster-studio-ai/' + Date.now() + '-' + name;
 
       const { error: uploadError } = await supabase.storage
@@ -255,8 +288,8 @@ export function PosterStudioAiPage() {
         .insert({
           org_id: organization.id,
           content_type: 'poster',
-          title: content.headline,
-          body: [content.headline, content.subheadline, content.offer, content.callToAction].filter(Boolean).join('\n'),
+          title,
+          body,
           media_url: signed?.signedUrl ?? null,
           status: 'ready',
           created_by: user.id,
@@ -322,7 +355,7 @@ export function PosterStudioAiPage() {
               <span>{generating ? 'Creating 3 posters' : 'Generate 3 posters'}</span>
             </button>
 
-            {selectedConcept ? (
+            {!usingAi && selectedConcept ? (
               <>
                 <div className="poster-panel-head"><h3>Edit selected</h3><Wand2 size={18} /></div>
                 <label className="poster-field">
@@ -358,25 +391,51 @@ export function PosterStudioAiPage() {
               <input type="color" className="poster-color-input" title="Custom background" aria-label="Custom background color" value={backgroundColor || basePalette.bg} onChange={(event) => setBackgroundColor(event.target.value.toUpperCase())} />
             </div>
 
-            {sharedBackgroundImage ? (
-              <div className="poster-group-body">
-                <span className="poster-group-note">AI background art applied to all concepts.</span>
-                <button type="button" className="poster-tool-button" title="Remove AI background" onClick={() => setSharedBackgroundImage('')}><X size={16} /></button>
-              </div>
-            ) : null}
+            {usingAi ? <span className="poster-group-note">The theme guides the next generation. AI posters have their text and colours baked in.</span> : null}
           </section>
 
           <section className="ai-poster-workspace" aria-label="AI Poster canvas">
             <div className="poster-preview-bar poster-canvas-topbar">
               <span className="poster-preview-label">{brandName} - {dim.exportLabel}</span>
               <div className="poster-actions">
-                <button type="button" className="primary-action" onClick={handleDownload} disabled={!selectedConcept}><Download size={16} /><span>Download PNG</span></button>
-                <button type="button" className="icon-text-button" onClick={handleSave} disabled={saving || !businessDna || !selectedConcept}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save'}</span></button>
+                <button type="button" className="primary-action" onClick={handleDownload} disabled={!usingAi && !selectedConcept}><Download size={16} /><span>Download PNG</span></button>
+                <button type="button" className="icon-text-button" onClick={handleSave} disabled={saving || !businessDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save'}</span></button>
                 <Link className="icon-text-button" to="/social"><Send size={16} /><span>Social Hub</span></Link>
               </div>
             </div>
 
-            {selectedConcept ? (
+            {usingAi && selectedAiPoster ? (
+              <>
+                <div className="ai-poster-stage-wrap" ref={stageRef} style={{ minHeight: dim.height * scale + 28 }}>
+                  <img className="ai-poster-image" src={selectedAiPoster.imageDataUrl} alt={selectedAiPoster.title} style={{ width: dim.width * scale, height: dim.height * scale }} />
+                </div>
+
+                <div className="ai-poster-filmstrip" role="listbox" aria-label="Choose a poster">
+                  {aiPosters.map((poster, index) => {
+                    const thumbScale = 132 / dim.width;
+                    const active = poster.id === selectedAiPoster.id;
+                    return (
+                      <button
+                        key={poster.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        className={active ? 'ai-poster-thumb is-active' : 'ai-poster-thumb'}
+                        onClick={() => setSelectedId(poster.id)}
+                      >
+                        <span className="ai-poster-thumb-frame" style={{ width: dim.width * thumbScale, height: dim.height * thumbScale }}>
+                          <img src={poster.imageDataUrl} alt={poster.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                        </span>
+                        <span className="ai-poster-thumb-meta">
+                          <strong>Option {index + 1}</strong>
+                          <small>{poster.angle || 'AI poster'}</small>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : selectedConcept ? (
               <>
                 <div className="ai-poster-stage-wrap" ref={stageRef} style={{ minHeight: dim.height * scale + 28 }}>
                   <div style={{ transform: 'scale(' + scale + ')', transformOrigin: 'top center', width: dim.width, height: dim.height }}>
@@ -389,8 +448,6 @@ export function PosterStudioAiPage() {
                       brandName={brandName}
                       logoUrl={logoUrl}
                       logoAlt={businessDna?.logo_alt_text ?? brandName + ' logo'}
-                      backgroundImageUrl={sharedBackgroundImage}
-                      backgroundOpacity={sharedBackgroundImage ? 1 : 0.72}
                     />
                   </div>
                 </div>
@@ -418,8 +475,6 @@ export function PosterStudioAiPage() {
                               brandName={brandName}
                               logoUrl={logoUrl}
                               logoAlt={brandName + ' logo'}
-                              backgroundImageUrl={sharedBackgroundImage}
-                              backgroundOpacity={sharedBackgroundImage ? 1 : 0.72}
                             />
                           </span>
                         </span>
@@ -433,10 +488,10 @@ export function PosterStudioAiPage() {
                 </div>
               </>
             ) : (
-              <section className="empty-state" aria-label="No concepts yet">
+              <section className="empty-state" aria-label="No posters yet">
                 <Sparkles size={26} />
-                <h3>Generate 3 poster concepts</h3>
-                <p>Enter a topic and objective, then Generate to see three premium options. Pick one from the bar to edit and export.</p>
+                <h3>Generate 3 posters</h3>
+                <p>Enter a topic and objective, then Generate. The AI designs three finished posters - pick your favourite from the bar to export.</p>
               </section>
             )}
 
@@ -497,15 +552,17 @@ async function requestN8nPoster(params: {
       signal: controller.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        mode: 'time2grow_poster_workflow_2',
-        action: 'hybrid_poster',
+        mode: 'poster_set',
+        action: 'poster_set',
         orgId: params.orgId,
         userId: params.userId,
         userIdea: params.brief,
         topic: cleanTopic(params.brief),
         objective: params.objective,
         preferredStyle: params.style,
+        style: params.style,
         format: params.format,
+        count: 3,
         brandName: params.brandName,
         palette: params.palette,
         businessDna: buildBusinessDnaPayload(params.businessDna),
@@ -519,12 +576,62 @@ async function requestN8nPoster(params: {
   }
 }
 
+// Read finished poster images out of the agent response. Supports the n8n
+// poster_set shape (concepts[]) and the single-image ai-handler shape.
+function extractAiPosters(payload: PosterAgentPayload): AiPoster[] {
+  if (Array.isArray(payload.concepts)) {
+    return payload.concepts
+      .map((concept, index) => {
+        const image = stringValue(concept.imageDataUrl) || stringValue(concept.imageUrl);
+        if (!image) return null;
+        return {
+          id: stringValue(concept.id) || 'concept-' + (index + 1),
+          title: stringValue(concept.title) || 'Poster ' + (index + 1),
+          angle: stringValue(concept.angle),
+          imageDataUrl: image,
+          copy: {
+            headline: stringValue(concept.copy?.headline),
+            subheadline: stringValue(concept.copy?.subheadline) || stringValue(concept.copy?.message),
+            callToAction: stringValue(concept.copy?.callToAction),
+          },
+        } satisfies AiPoster;
+      })
+      .filter((poster): poster is AiPoster => Boolean(poster));
+  }
+
+  const single = firstImage(payload);
+  if (!single) return [];
+  return [{
+    id: 'concept-1',
+    title: stringValue(payload.poster?.title) || 'AI poster',
+    angle: 'AI poster',
+    imageDataUrl: single,
+    copy: {
+      headline: stringValue(payload.copy?.headline),
+      subheadline: stringValue(payload.copy?.subheadline) || stringValue(payload.copy?.message),
+      callToAction: stringValue(payload.copy?.callToAction),
+    },
+  }];
+}
+
 function firstImage(payload: PosterAgentPayload) {
   return stringValue(payload.imageDataUrl)
     || stringValue(payload.backgroundImageUrl)
     || stringValue(payload.imageUrl)
     || stringValue(payload.poster?.imageUrl)
     || stringValue(payload.poster?.downloadUrl);
+}
+
+async function sourceToBlob(src: string): Promise<Blob> {
+  if (src.startsWith('data:')) {
+    const [meta, b64] = src.split(',');
+    const mime = /data:([^;]+)/.exec(meta)?.[1] || 'image/png';
+    const binary = atob(b64 ?? '');
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return new Blob([bytes], { type: mime });
+  }
+  return (await fetch(src)).blob();
 }
 
 type BriefFacts = {
