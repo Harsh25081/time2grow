@@ -202,7 +202,7 @@ return [{
     workflow: 'time2grow-poster-workflow-2',
     message: 'time2grow poster workflow 2 is ready.',
     models: {
-      planner: 'deepseek-chat',
+      planner: 'deepseek-v4-pro',
       imageAgent: 'gpt-image-1',
     },
   },
@@ -293,7 +293,7 @@ const workflow = {
     },
     {
       parameters: {
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-pro',
         options: {
           temperature: 0.5,
           maxTokens: 2600,
@@ -303,7 +303,7 @@ const workflow = {
         },
       },
       id: 'deepseek-chat-model',
-      name: 'DeepSeek Chat Model',
+      name: 'DeepSeek v4 Pro Model',
       type: '@n8n/n8n-nodes-langchain.lmChatDeepSeek',
       typeVersion: 1,
       position: [760, -280],
@@ -429,7 +429,7 @@ const workflow = {
     'Health Payload': {
       main: [[{ node: 'Respond Health', type: 'main', index: 0 }]],
     },
-    'DeepSeek Chat Model': {
+    'DeepSeek v4 Pro Model': {
       ai_languageModel: [[{ node: 'DeepSeek Poster Concepts Agent', type: 'ai_languageModel', index: 0 }]],
     },
     'DeepSeek Planning Memory': {

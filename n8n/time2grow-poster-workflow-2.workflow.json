@@ -50,7 +50,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{\n  json: {\n    ok: true,\n    workflow: 'time2grow-poster-workflow-2',\n    message: 'time2grow poster workflow 2 is ready.',\n    models: {\n      planner: 'deepseek-chat',\n      imageAgent: 'gpt-image-1',\n    },\n  },\n}];"
+        "jsCode": "return [{\n  json: {\n    ok: true,\n    workflow: 'time2grow-poster-workflow-2',\n    message: 'time2grow poster workflow 2 is ready.',\n    models: {\n      planner: 'deepseek-v4-pro',\n      imageAgent: 'gpt-image-1',\n    },\n  },\n}];"
       },
       "id": "health-payload",
       "name": "Health Payload",
@@ -77,7 +77,7 @@
     },
     {
       "parameters": {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-pro",
         "options": {
           "temperature": 0.5,
           "maxTokens": 2600,
@@ -87,7 +87,7 @@
         }
       },
       "id": "deepseek-chat-model",
-      "name": "DeepSeek Chat Model",
+      "name": "DeepSeek v4 Pro Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatDeepSeek",
       "typeVersion": 1,
       "position": [
@@ -270,7 +270,7 @@
         ]
       ]
     },
-    "DeepSeek Chat Model": {
+    "DeepSeek v4 Pro Model": {
       "ai_languageModel": [
         [
           {
