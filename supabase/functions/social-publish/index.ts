@@ -467,7 +467,7 @@ async function downloadMedia(supabase: ReturnType<typeof serviceClient>, asset: 
   return {
     blob: data,
     fileName: stringValue(asset.file_name) ?? 'upload',
-    mimeType: stringValue(asset.mime_type) ?? data.type || 'application/octet-stream',
+    mimeType: stringValue(asset.mime_type) ?? (data.type || 'application/octet-stream'),
   };
 }
 

@@ -5,7 +5,6 @@ import {
   CheckSquare,
   Clock3,
   FileUp,
-  Image,
   Megaphone,
   MessageCircle,
   PlaySquare,
@@ -15,7 +14,7 @@ import {
   Share2,
   Smartphone,
   Square,
-  Video,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
@@ -24,7 +23,6 @@ import type { Database, Json } from '../../types/database';
 type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
 type HandleType = 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
 type HandleStatus = 'ready' | 'review' | 'needs_setup';
-type ContentType = 'post' | 'poster' | 'video';
 type PostStatus = 'draft' | 'queued' | 'publishing' | 'published' | 'partial_failed' | 'failed' | 'cancelled';
 type DistributionHandleRow = Database['public']['Tables']['distribution_handles']['Row'];
 type SocialPostRow = Database['public']['Tables']['social_posts']['Row'];
@@ -60,7 +58,6 @@ type AddHandleForm = {
 };
 
 type DraftForm = {
-  contentType: ContentType;
   title: string;
   body: string;
   mediaUrl: string;
@@ -115,11 +112,7 @@ const providerMeta: Record<Provider, { handleType: HandleType; type: string; det
   telegram: { handleType: 'telegram_channel', type: 'TG', detail: 'Telegram Channel', externalLabel: 'Telegram Channel ID' },
 };
 
-const contentTypes: Array<{ value: ContentType; label: string; icon: typeof FileUp; accept: string }> = [
-  { value: 'post', label: 'Post', icon: FileUp, accept: 'image/*,video/*' },
-  { value: 'poster', label: 'Poster', icon: Image, accept: 'image/png,image/jpeg,image/webp,image/gif' },
-  { value: 'video', label: 'Video', icon: Video, accept: 'video/mp4,video/webm,video/quicktime' },
-];
+const mediaAccept = 'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
 
 const channels: Channel[] = [
   { provider: 'facebook', name: 'Facebook Pages', status: 'OAuth required', mode: 'Feed posts, reels later', accent: 'blue', icon: Share2 },
@@ -168,7 +161,6 @@ export function SocialHubPage() {
   const [selectedHandleIds, setSelectedHandleIds] = useState<Set<string>>(defaultSelected);
   const [form, setForm] = useState<AddHandleForm>({ provider: 'facebook', label: '', externalId: '', status: 'ready' });
   const [draft, setDraft] = useState<DraftForm>({
-    contentType: 'post',
     title: 'Launch offer post',
     body: 'Write the message here. Live publishing will stay gated until OAuth and provider review are complete.',
     mediaUrl: '',
@@ -320,12 +312,17 @@ export function SocialHubPage() {
     [connections],
   );
 
+  function needsOAuthConnection(handle: Handle) {
+    const connection = connectionByProvider.get(handle.provider);
+    return connection?.authMode === 'oauth' && connection.status !== 'connected';
+  }
+
+  const hasUnlinkedOAuthTargets = selectedHandles.some(needsOAuthConnection);
+
   const groupedHandles = useMemo(
     () => channels.map((channel) => ({ ...channel, handles: accountHandles.filter((handle) => handle.provider === channel.provider) })),
     [accountHandles],
   );
-
-  const activeContentType = contentTypes.find((item) => item.value === draft.contentType) ?? contentTypes[0];
 
   function applyContentItem(contentItemId: string) {
     setSelectedContentItemId(contentItemId);
@@ -335,7 +332,6 @@ export function SocialHubPage() {
     setSelectedCampaignId(contentItem.campaign_id ?? '');
     setDraft((current) => ({
       ...current,
-      contentType: contentItem.content_type,
       title: contentItem.title,
       body: contentItem.body ?? '',
       mediaUrl: contentItem.media_url ?? '',
@@ -454,6 +450,29 @@ export function SocialHubPage() {
     }
   }
 
+  async function handleDeleteHandle(handle: Handle) {
+    if (!window.confirm(`Remove "${handle.label}"? This can't be undone.`)) return;
+
+    setFormMessage('');
+    setFormError('');
+
+    if (supabase && handle.persisted) {
+      const { error } = await supabase.from('distribution_handles').delete().eq('id', handle.id);
+      if (error) {
+        setFormError(errorMessage(error, 'Could not remove handle.'));
+        return;
+      }
+    }
+
+    setAccountHandles((current) => current.filter((item) => item.id !== handle.id));
+    setSelectedHandleIds((current) => {
+      const next = new Set(current);
+      next.delete(handle.id);
+      return next;
+    });
+    setFormMessage('Handle removed.');
+  }
+
   async function handleQueueSelected() {
     setQueueMessage('');
     setQueueError('');
@@ -489,7 +508,7 @@ export function SocialHubPage() {
           title,
           body: body || null,
           media_url: mediaUrl || null,
-          content_type: draft.contentType,
+          content_type: 'post' as const,
           campaign_id: sourceCampaignId,
           content_item_id: sourceContentItemId,
           scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
@@ -511,7 +530,7 @@ export function SocialHubPage() {
             title,
             body: body || null,
             media_url: mediaUrl || null,
-            content_type: draft.contentType,
+            content_type: 'post' as const,
             scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
             status: 'queued' as const,
             created_by: user.id,
@@ -532,7 +551,6 @@ export function SocialHubPage() {
             orgId: organization.id,
             userId: user.id,
             postId: post.id,
-            contentType: draft.contentType,
             file: selectedFile,
           });
         }
@@ -610,7 +628,7 @@ export function SocialHubPage() {
   }
 
   function selectReadyHandles() {
-    setSelectedHandleIds(new Set(accountHandles.filter((handle) => handle.status === 'ready' && (!supabase || handle.persisted)).map((handle) => handle.id)));
+    setSelectedHandleIds(new Set(accountHandles.filter((handle) => handle.status === 'ready' && (!supabase || handle.persisted) && !needsOAuthConnection(handle)).map((handle) => handle.id)));
   }
 
   function selectAllHandles() {
@@ -704,26 +722,6 @@ export function SocialHubPage() {
           <h3>Publish content</h3>
         </div>
 
-        <div className="content-type-control" role="radiogroup" aria-label="Content type">
-          {contentTypes.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.value}
-                type="button"
-                className={draft.contentType === item.value ? 'is-active' : ''}
-                onClick={() => {
-                  setDraft((current) => ({ ...current, contentType: item.value }));
-                  setSelectedFile(null);
-                }}
-              >
-                <Icon size={18} />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
         <div className="draft-form">
           <label>
             <span>Title</span>
@@ -743,11 +741,11 @@ export function SocialHubPage() {
         <div className="media-picker">
           <label className="media-upload-box">
             <FileUp size={24} />
-            <strong>{selectedFile ? selectedFile.name : `Upload ${activeContentType.label.toLowerCase()} media`}</strong>
+            <strong>{selectedFile ? selectedFile.name : 'Upload media'}</strong>
             <span>{selectedFile ? `${formatBytes(selectedFile.size)} - ${selectedFile.type || 'file'}` : 'Images for posters/posts, videos for reels/shorts/uploads.'}</span>
             <input
               type="file"
-              accept={activeContentType.accept}
+              accept={mediaAccept}
               onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
             />
           </label>
@@ -757,7 +755,7 @@ export function SocialHubPage() {
         </div>
 
         <div className="composer-actions">
-          <button className="primary-action composer-send" type="button" disabled={selectedHandles.length === 0 || queueing || (Boolean(supabase) && hasDemoTargets)} onClick={handleQueueSelected}>
+          <button className="primary-action composer-send" type="button" disabled={selectedHandles.length === 0 || queueing || (Boolean(supabase) && (hasDemoTargets || hasUnlinkedOAuthTargets))} onClick={handleQueueSelected}>
             <Send size={18} />
             <span>{queueing ? 'Publishing' : 'Publish now'}</span>
           </button>
@@ -765,6 +763,7 @@ export function SocialHubPage() {
         </div>
 
         {Boolean(supabase) && hasDemoTargets ? <p className="form-message warning">Only saved handles with real platform IDs can publish.</p> : null}
+        {Boolean(supabase) && hasUnlinkedOAuthTargets ? <p className="form-message warning">A selected handle isn&apos;t backed by a real connection yet. Click Connect for that channel above before publishing &#x2014; adding a handle manually doesn&apos;t link an account.</p> : null}
         {queueMessage ? <p className="form-message success">{queueMessage}</p> : null}
         {queueError ? <p className="form-message error">{queueError}</p> : null}
       </section>
@@ -837,15 +836,21 @@ export function SocialHubPage() {
                 {channel.handles.map((handle) => {
                   const selected = selectedHandleIds.has(handle.id);
                   const CheckIcon = selected ? CheckSquare : Square;
+                  const unlinked = needsOAuthConnection(handle);
                   return (
-                    <button className={`handle-row ${selected ? 'is-selected' : ''}`} type="button" key={handle.id} onClick={() => toggleHandle(handle.id)} aria-pressed={selected}>
-                      <CheckIcon size={19} />
-                      <div>
-                        <strong>{handle.label}</strong>
-                        <span>{handle.detail}{handle.persisted ? ' - saved' : ''}</span>
-                      </div>
-                      <span className={`handle-status ${handle.status}`}>{statusLabel(handle.status)}</span>
-                    </button>
+                    <div className={`handle-row ${selected ? 'is-selected' : ''}`} key={handle.id}>
+                      <button className="handle-row__select" type="button" onClick={() => toggleHandle(handle.id)} aria-pressed={selected}>
+                        <CheckIcon size={19} />
+                        <div>
+                          <strong>{handle.label}</strong>
+                          <span>{handle.detail}{handle.persisted ? ' - saved' : ''}</span>
+                        </div>
+                        <span className={`handle-status ${unlinked ? 'needs_setup' : handle.status}`}>{unlinked ? 'Connect first' : statusLabel(handle.status)}</span>
+                      </button>
+                      <button type="button" className="icon-button" aria-label={`Remove ${handle.label}`} onClick={() => handleDeleteHandle(handle)}>
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   );
                 })}
               </div>
@@ -915,7 +920,7 @@ async function loadTargetsForPosts(postIds: string[]) {
   return targetsByPost;
 }
 
-async function uploadMediaAsset({ orgId, userId, postId, contentType, file }: { orgId: string; userId: string; postId: string; contentType: ContentType; file: File }) {
+async function uploadMediaAsset({ orgId, userId, postId, file }: { orgId: string; userId: string; postId: string; file: File }) {
   if (!supabase) throw new Error('Supabase is not configured.');
 
   const storagePath = `${orgId}/${postId}/${Date.now()}-${sanitizeFileName(file.name)}`;
@@ -930,7 +935,7 @@ async function uploadMediaAsset({ orgId, userId, postId, contentType, file }: { 
   const asset: MediaAssetInsert = {
     org_id: orgId,
     social_post_id: postId,
-    media_type: file.type.startsWith('video/') ? 'video' : contentType === 'poster' ? 'poster' : 'image',
+    media_type: file.type.startsWith('video/') ? 'video' : 'image',
     file_name: file.name,
     mime_type: file.type || null,
     size_bytes: file.size,

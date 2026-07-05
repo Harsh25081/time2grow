@@ -15,6 +15,8 @@ type AuthContextValue = BootstrapState & {
   loading: boolean;
   session: Session | null;
   user: User | null;
+  passwordRecovery: boolean;
+  clearPasswordRecovery: () => void;
   signOut: () => Promise<void>;
   refreshWorkspace: () => Promise<void>;
 };
@@ -125,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapState>(emptyBootstrap);
   const [loading, setLoading] = useState(true);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   const refreshWorkspace = async () => {
     if (!supabase || !session?.user) {
@@ -185,8 +188,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
+
+      if (event === 'PASSWORD_RECOVERY') {
+        setPasswordRecovery(true);
+      } else if (event === 'SIGNED_OUT') {
+        setPasswordRecovery(false);
+      }
 
       if (!nextSession?.user) {
         setBootstrap(emptyBootstrap);
@@ -210,15 +219,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       session,
       user: session?.user ?? null,
+      passwordRecovery,
+      clearPasswordRecovery: () => setPasswordRecovery(false),
       ...bootstrap,
       signOut: async () => {
         await supabase?.auth.signOut();
         setSession(null);
         setBootstrap(emptyBootstrap);
+        setPasswordRecovery(false);
       },
       refreshWorkspace,
     }),
-    [bootstrap, loading, session],
+    [bootstrap, loading, passwordRecovery, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

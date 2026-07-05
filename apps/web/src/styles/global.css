@@ -966,20 +966,32 @@ a {
   width: 100%;
   min-height: 66px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   padding: 11px;
   color: var(--text);
-  text-align: left;
 }
 
 .handle-row.is-selected {
   border-color: var(--primary);
   background: #fdf2f8;
+}
+
+.handle-row__select {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
 }
 
 .handle-row svg {
@@ -1055,7 +1067,7 @@ a {
     grid-template-columns: 1fr;
   }
 
-  .handle-row {
+  .handle-row__select {
     grid-template-columns: 22px minmax(0, 1fr);
   }
 
@@ -1190,6 +1202,39 @@ a {
   grid-column: 1 / -1;
 }
 
+.dna-website-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dna-website-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dna-website-row .icon-text-button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.dna-color-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dna-color-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 38px;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .dna-color-row {
+    grid-template-columns: 1fr 1fr auto;
+  }
+}
+
 .queue-empty {
   min-height: 72px;
   display: flex;
@@ -1245,31 +1290,6 @@ a {
   color: var(--text);
   padding: 0 12px;
   font-weight: 700;
-}
-
-.content-type-control {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.content-type-control button {
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #ffffff;
-  color: var(--muted);
-  font-weight: 900;
-}
-
-.content-type-control button.is-active {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: #fdf2f8;
 }
 
 .media-picker {
@@ -1329,11 +1349,6 @@ a {
   }
 }
 
-@media (max-width: 520px) {
-  .content-type-control {
-    grid-template-columns: 1fr;
-  }
-}
 .composer-actions {
   display: flex;
   align-items: center;

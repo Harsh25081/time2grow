@@ -86,6 +86,59 @@ export type Database = {
         };
         Relationships: [];
       };
+      business_dna: {
+        Row: {
+          id: string;
+          org_id: string;
+          website_url: string | null;
+          mission: string | null;
+          vision: string | null;
+          positioning: string | null;
+          values: string | null;
+          audience: string | null;
+          proof_points: string | null;
+          growth_goal: string | null;
+          key_metric: string | null;
+          additional_notes: string | null;
+          brand_colors: Json;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          website_url?: string | null;
+          mission?: string | null;
+          vision?: string | null;
+          positioning?: string | null;
+          values?: string | null;
+          audience?: string | null;
+          proof_points?: string | null;
+          growth_goal?: string | null;
+          key_metric?: string | null;
+          additional_notes?: string | null;
+          brand_colors?: Json;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          website_url?: string | null;
+          mission?: string | null;
+          vision?: string | null;
+          positioning?: string | null;
+          values?: string | null;
+          audience?: string | null;
+          proof_points?: string | null;
+          growth_goal?: string | null;
+          key_metric?: string | null;
+          additional_notes?: string | null;
+          brand_colors?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       campaigns: {
         Row: {
           id: string;

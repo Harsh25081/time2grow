@@ -26,7 +26,7 @@ const modeCopy: Record<AuthMode, { title: string; action: string; icon: typeof M
 };
 
 export function AuthPage() {
-  const { configured, session } = useAuth();
+  const { configured, session, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -49,6 +49,10 @@ export function AuthPage() {
 
     return password.length >= 8;
   }, [configured, email, mode, password]);
+
+  if (passwordRecovery) {
+    return <UpdatePasswordPanel onComplete={clearPasswordRecovery} />;
+  }
 
   if (session) {
     return <Navigate to="/" replace />;
@@ -208,6 +212,109 @@ export function AuthPage() {
             <button className="primary-action" type="submit" disabled={!canSubmit || loading}>
               {loading ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
               <span>{loading ? 'Working' : copy.action}</span>
+            </button>
+          </form>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function UpdatePasswordPanel({ onComplete }: { onComplete: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const canSubmit = password.length >= 8 && password === confirmPassword;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!supabase || !canSubmit) {
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ password });
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setMessage('Password updated. Redirecting you to your workspace.');
+      setDone(true);
+      setTimeout(onComplete, 1200);
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : 'Could not update password.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="auth-screen">
+      <section className="auth-panel" aria-label="Set a new password">
+        <div className="brand-lockup">
+          <div className="brand-mark">t2g</div>
+          <div>
+            <p className="eyebrow">AI growth workspace</p>
+            <h1>time2grow</h1>
+          </div>
+        </div>
+
+        <div className="auth-card">
+          <div className="auth-card__header">
+            <span className="auth-icon">
+              <KeyRound size={22} />
+            </span>
+            <div>
+              <h2>Set a new password</h2>
+              <p>Choose a new password for your account to finish resetting it.</p>
+            </div>
+          </div>
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <label>
+              <span>New password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="At least 8 characters"
+                minLength={8}
+                required
+                disabled={done}
+              />
+            </label>
+
+            <label>
+              <span>Confirm password</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                placeholder="Re-enter password"
+                minLength={8}
+                required
+                disabled={done}
+              />
+            </label>
+
+            {message ? <p className="form-message success">{message}</p> : null}
+            {error ? <p className="form-message error">{error}</p> : null}
+
+            <button className="primary-action" type="submit" disabled={!canSubmit || loading || done}>
+              {loading ? <Loader2 className="spin" size={18} /> : <ArrowRight size={18} />}
+              <span>{loading ? 'Working' : 'Update password'}</span>
             </button>
           </form>
         </div>

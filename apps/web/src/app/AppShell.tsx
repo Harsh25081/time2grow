@@ -2,6 +2,7 @@ import {
   BarChart3,
   Bot,
   CalendarDays,
+  Dna,
   Home,
   Inbox,
   LogOut,
@@ -11,6 +12,7 @@ import {
   Target,
 } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { BusinessDnaPage } from '../features/business-dna/BusinessDnaPage';
 import { useAuth } from '../features/auth/AuthProvider';
 import { SocialHubPage } from '../features/social-hub/SocialHubPage';
 
@@ -22,6 +24,7 @@ type NavItem = {
 
 const primaryNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home },
+  { to: '/business-dna', label: 'Business DNA', icon: Dna },
   { to: '/content', label: 'Content', icon: Sparkles },
   { to: '/social', label: 'Social', icon: Send },
   { to: '/leads', label: 'Leads', icon: Target },
@@ -33,7 +36,7 @@ const modules = [
   {
     title: 'Business DNA',
     description: 'Capture positioning, audience, proof, colors, and growth goals.',
-    status: 'Next',
+    status: 'Live',
     color: 'pink',
   },
   {
@@ -108,6 +111,7 @@ export function AppShell() {
               />
             }
           />
+          <Route path="/business-dna" element={<BusinessDnaPage />} />
           <Route path="/content" element={<ModulePlaceholder title="Content Studio" icon={Sparkles} />} />
           <Route path="/social" element={<SocialHubPage />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
