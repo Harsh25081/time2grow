@@ -50,8 +50,8 @@ type ExtractedDna = {
   proofPoints: string;
   growthGoal: string;
   keyMetric: string;
+  colors?: ColorEntry[];
 };
-
 export function BusinessDnaPage() {
   const { organization, user } = useAuth();
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -143,6 +143,7 @@ export function BusinessDnaPage() {
       const dna = data?.dna as ExtractedDna | undefined;
       if (!dna) throw new Error('The AI did not return any details for that website.');
 
+      const fetchedColors = extractFetchedColors(dna.colors);
       setForm((current) => ({
         ...current,
         mission: dna.mission || current.mission,
@@ -153,8 +154,9 @@ export function BusinessDnaPage() {
         proofPoints: dna.proofPoints || current.proofPoints,
         growthGoal: dna.growthGoal || current.growthGoal,
         keyMetric: dna.keyMetric || current.keyMetric,
+        colors: fetchedColors.length > 0 ? mergeFetchedColors(current.colors, fetchedColors) : current.colors,
       }));
-      setExtractMessage('Pulled details from the website. Review the fields below, edit anything, then save.');
+      setExtractMessage('Pulled details and brand colors from the website. Review the fields below, edit anything, then save.');
     } catch (fetchError) {
       setExtractError(errorMessage(fetchError, 'Could not fetch details from that website.'));
     } finally {
@@ -324,6 +326,30 @@ export function BusinessDnaPage() {
   );
 }
 
+function extractFetchedColors(value: unknown) {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const record = entry as Record<string, unknown>;
+      const label = typeof record.label === 'string' ? record.label.trim() : '';
+      const colorValue = typeof record.value === 'string' ? record.value.trim().toUpperCase() : '';
+      if (!/^#[0-9A-F]{6}$/.test(colorValue)) return null;
+      return { label: label || 'Brand color', value: colorValue };
+    })
+    .filter((entry): entry is ColorEntry => Boolean(entry))
+    .slice(0, 8);
+}
+
+function mergeFetchedColors(current: ColorEntry[], fetched: ColorEntry[]) {
+  const currentWithValues = current.filter((color) => color.value.trim());
+  if (currentWithValues.length === 0) return fetched;
+
+  const existing = new Set(currentWithValues.map((color) => color.value.trim().toUpperCase()));
+  const additions = fetched.filter((color) => !existing.has(color.value.trim().toUpperCase()));
+  return [...currentWithValues, ...additions].slice(0, 8);
+}
 function isColorRecord(value: Json): value is { [key: string]: Json | undefined } {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
