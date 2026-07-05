@@ -72,6 +72,7 @@ const payloadForAgents = {
 
 const agentInput = [
   'Return strict JSON only.',
+  'The user request text (topic / rawBrief) is the PRIMARY instruction - read it carefully and design for exactly what it asks. The objective field is only an optional hint and may be empty; never let it override the user request.',
   'Design exactly ' + count + ' distinct finished-poster concepts for this time2grow request.',
   'Each concept is a COMPLETE premium poster whose text will be rendered by an image model, so every imagePrompt must quote the exact text to display and demand correct spelling.',
   'Use a bold Visualize Value / Jack Butcher style conceptual direction with a strong topic-specific visual metaphor in every concept.',

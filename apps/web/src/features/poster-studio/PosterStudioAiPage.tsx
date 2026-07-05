@@ -58,24 +58,6 @@ type PosterAgentPayload = {
   poster?: { imageUrl?: string; downloadUrl?: string; title?: string };
 };
 
-const posterObjectiveOptions = [
-  'Generic poster',
-  'Festive wishes',
-  'Event announcement',
-  'Hackathon promotion',
-  'Runathon promotion',
-  'Cycling club ride',
-  'Donation camp',
-  'NGO awareness',
-  'Community invitation',
-  'Lead generation',
-  'Brand awareness',
-  'Demo booking',
-  'Product education',
-  'Trust proof',
-  'Offer conversion',
-];
-
 export function PosterStudioAiPage() {
   const { organization, user } = useAuth();
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
@@ -83,8 +65,8 @@ export function PosterStudioAiPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [brief, setBrief] = useState('Happy Diwali wishes from AD96 with a warm premium festive look');
-  const [objective, setObjective] = useState('Festive wishes');
+  const [brief, setBrief] = useState('');
+  const [objective, setObjective] = useState('');
   const [style, setStyle] = useState('Premium, high-contrast, minimal words, strong hierarchy');
   const [format, setFormat] = useState<PosterFormat>('portrait');
 
@@ -330,14 +312,12 @@ export function PosterStudioAiPage() {
           <section className="draft-panel ai-poster-control" aria-label="AI Poster controls">
             <div className="poster-panel-head"><h3>Brief</h3><Wand2 size={18} /></div>
             <label className="poster-field">
-              <span>Topic</span>
-              <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4} />
+              <span>Your request</span>
+              <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4} placeholder="Describe the poster you want, e.g. Diwali wishes from AD96, or a bold laundry service offer" />
             </label>
             <label className="poster-field">
-              <span>Objective</span>
-              <select value={objective} onChange={(event) => setObjective(event.target.value)}>
-                {posterObjectiveOptions.map((item) => <option key={item}>{item}</option>)}
-              </select>
+              <span>Goal (optional)</span>
+              <input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Leave blank, or add a goal e.g. festive wishes, lead generation" />
             </label>
             <label className="poster-field">
               <span>Style</span>
