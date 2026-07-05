@@ -185,36 +185,66 @@ return concepts.map(function (concept, index) {
 });
 `);
 
-// Runs once for all image items: collect every generated poster into one response.
+// Runs once for all image items: collect every generated poster into one
+// response. Handles binary output AND json output (b64 or url), and surfaces
+// the real image-node error instead of hard-failing so it is visible in the app.
 const packageResponseCode = code(`
 const items = $input.all();
 const concepts = [];
+const errors = [];
 
 for (let i = 0; i < items.length; i++) {
   const item = items[i];
-  const binaryName = item.binary && item.binary.poster ? 'poster' : (item.binary && item.binary.data ? 'data' : '');
-  let imageDataUrl = '';
+  const j = item.json || {};
 
+  if (j.error) errors.push(String(j.error && j.error.message ? j.error.message : j.error));
+
+  let imageDataUrl = '';
+  let imageUrl = '';
+
+  const binaryName = item.binary && item.binary.poster ? 'poster' : (item.binary && item.binary.data ? 'data' : '');
   if (binaryName) {
     const buffer = await this.helpers.getBinaryDataBuffer(i, binaryName);
     const binary = item.binary[binaryName] || {};
     const mimeType = binary.mimeType || 'image/png';
     imageDataUrl = 'data:' + mimeType + ';base64,' + buffer.toString('base64');
+  } else {
+    // Fallback: some image nodes/models return the result inside json.
+    const dataArr = Array.isArray(j.data) ? j.data : (Array.isArray(j.images) ? j.images : []);
+    const first = dataArr[0] || {};
+    const b64 = j.b64_json || first.b64_json || first.b64 || '';
+    const url = j.url || j.imageUrl || first.url || '';
+    if (b64) imageDataUrl = 'data:image/png;base64,' + String(b64);
+    else if (url) imageUrl = String(url);
   }
 
-  concepts.push({
-    id: item.json.conceptId || ('concept-' + (i + 1)),
-    title: item.json.title || ('Concept ' + (i + 1)),
-    angle: item.json.angle || '',
-    imageDataUrl: imageDataUrl,
-    copy: item.json.copy || {},
-    imageSize: item.json.imageSize || '',
-    prompt: item.json.openAiPrompt || '',
-  });
+  if (imageDataUrl || imageUrl) {
+    concepts.push({
+      id: j.conceptId || ('concept-' + (i + 1)),
+      title: j.title || ('Concept ' + (i + 1)),
+      angle: j.angle || '',
+      imageDataUrl: imageDataUrl,
+      imageUrl: imageUrl,
+      copy: j.copy || {},
+      imageSize: j.imageSize || '',
+      prompt: j.openAiPrompt || '',
+    });
+  }
 }
 
-const usable = concepts.filter(function (concept) { return concept.imageDataUrl; });
-if (usable.length === 0) throw new Error('No poster images were generated.');
+if (concepts.length === 0) {
+  return [{
+    json: {
+      ok: false,
+      workflow: 'time2grow-poster-workflow-2',
+      mode: 'poster_set',
+      error: errors.length
+        ? ('Image generation failed: ' + errors.join(' | '))
+        : 'The image model returned no image. Open the OpenAI Poster Image Agent node output in n8n to see what it returned.',
+      concepts: [],
+    },
+  }];
+}
 
 return [{
   json: {
@@ -222,7 +252,7 @@ return [{
     workflow: 'time2grow-poster-workflow-2',
     mode: 'poster_set',
     source: 'n8n-ai-agent',
-    concepts: usable,
+    concepts: concepts,
     generatedAt: new Date().toISOString(),
   },
 }];
@@ -402,6 +432,7 @@ const workflow = {
       type: '@n8n/n8n-nodes-langchain.openAi',
       typeVersion: 2.3,
       position: [1580, 0],
+      onError: 'continueRegularOutput',
       credentials: {
         openAiApi: {
           id: 'gYxbG88vtm1ZV55L',

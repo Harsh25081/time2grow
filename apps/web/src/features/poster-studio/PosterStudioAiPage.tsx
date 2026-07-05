@@ -190,7 +190,7 @@ export function PosterStudioAiPage() {
         logoUrl,
       });
 
-      if (payload && payload.ok !== false) {
+      if (payload) {
         const posters = extractAiPosters(payload);
         if (posters.length > 0) {
           setAiPosters(posters);
@@ -198,9 +198,12 @@ export function PosterStudioAiPage() {
           setMessage(`Generated ${posters.length} AI poster${posters.length > 1 ? 's' : ''}. Pick your favourite, then Download, Save, or send to Social Hub.`);
           return;
         }
+        if (payload.ok === false && payload.error) {
+          setError(payload.error);
+        }
       }
 
-      setMessage('The AI image service was not reachable, so here are 3 editable template concepts instead. Pick one, edit the text, then export.');
+      setMessage('No AI images came back, so here are 3 editable template concepts instead. Pick one, edit the text, then export.');
     } catch (generateError) {
       setError(errorMessage(generateError, 'The AI image service failed.'));
       setMessage('Showing 3 editable template concepts instead. Pick one, edit the text, then export.');
