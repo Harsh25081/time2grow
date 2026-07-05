@@ -67,12 +67,15 @@ const payloadForAgents = {
     callToAction: text(copy.callToAction, 80),
   },
   learningContext: text(body.learningContext, 2000),
+  varietyToken: Math.random().toString(36).slice(2, 10) + '-' + Date.now().toString(36),
 };
 
 const agentInput = [
   'Return strict JSON only.',
   'Design exactly ' + count + ' distinct finished-poster concepts for this time2grow request.',
   'Each concept is a COMPLETE premium poster whose text will be rendered by an image model, so every imagePrompt must quote the exact text to display and demand correct spelling.',
+  'Use a bold Visualize Value / Jack Butcher style conceptual direction with a strong topic-specific visual metaphor in every concept.',
+  'Variation token (fresh-creativity seed - explore new metaphors/layouts, do not repeat earlier runs): ' + payloadForAgents.varietyToken + '.',
   JSON.stringify(payloadForAgents, null, 2),
 ].join('\\n\\n');
 
@@ -109,21 +112,23 @@ function parseMaybeJson(value) {
 function fallbackConcepts(src, count) {
   const topic = src.topic || 'Poster';
   const angles = [
-    { angle: 'bold statement', mood: 'one bold central statement in huge confident type with generous negative space' },
-    { angle: 'premium minimal', mood: 'a refined minimal composition with elegant type and one subtle accent, calm and premium' },
-    { angle: 'vibrant focal', mood: 'a single strong topic-relevant focal image with a clean color block reserved for the text' },
-    { angle: 'editorial grid', mood: 'a disciplined editorial grid layout with clear hierarchy and a modern feel' },
+    { angle: 'bold statement', mood: 'one bold central statement in huge confident type with a single geometric metaphor and generous negative space' },
+    { angle: 'geometric metaphor', mood: 'one clean geometric metaphor (arrows, grid, circle) that represents the topic, stark high contrast with one accent' },
+    { angle: 'iconic focal', mood: 'a single iconic minimal illustration of the topic as the hero, with a clean color block reserved for the text' },
+    { angle: 'editorial grid', mood: 'a disciplined editorial grid layout with clear hierarchy, arrows/lines, and a modern conceptual feel' },
   ];
+  // Rotate the starting angle each run so repeated fallbacks are not identical.
+  const start = Math.floor(Math.random() * angles.length);
   const out = [];
   for (let i = 0; i < count; i++) {
-    const a = angles[i % angles.length];
+    const a = angles[(start + i) % angles.length];
     out.push({
       title: 'Concept ' + (i + 1),
       angle: a.angle,
       primaryText: topic,
       secondaryText: '',
       ctaText: '',
-      imagePrompt: 'A premium, minimalist, high-quality poster about ' + topic + '. Design it as ' + a.mood + '.',
+      imagePrompt: 'A premium, minimalist, Visualize Value / Jack Butcher style poster about ' + topic + '. Design it as ' + a.mood + '.',
     });
   }
   return out;
@@ -160,12 +165,14 @@ return concepts.map(function (concept, index) {
 
   const finalPrompt = [
     basePrompt || ('A premium, minimalist, high-end poster about ' + source.topic + '.'),
+    'Include a strong, specific visual metaphor for the topic "' + source.topic + '" - a clear iconic focal subject, not a plain gradient or empty background.',
+    'Art direction: bold Visualize Value / Jack Butcher style - one geometric conceptual metaphor, clean lines/arrows/grids/shapes, stark high contrast (mostly black and off-white) with ONE brand accent, huge disciplined negative space. Original concept, do not copy any specific creator or template.',
     'Render all text exactly and spelled correctly. Primary text: "' + primaryText + '".',
     secondaryText ? 'Secondary text: "' + secondaryText + '".' : 'No secondary text.',
     ctaText ? 'Call to action text: "' + ctaText + '".' : 'No call-to-action text.',
     'Show the brand wordmark "' + source.brandName + '" small and tasteful; do not invent any other logo.',
     paletteText ? 'Use this locked brand palette: ' + paletteText + '.' : '',
-    'Format: ' + source.format + '. Style: premium, minimalist, high-contrast conceptual "visual value" design, disciplined negative space, one clear focal idea, refined typography, Canva-quality, print-ready, high resolution.',
+    'Format: ' + source.format + '. Premium, minimalist, refined typography, Canva-quality, print-ready, high resolution.',
     'Absolutely no misspelled or random words, no lorem ipsum, no watermark, no QR code, no fake phone numbers, no invented offers, no stock-photo clutter.',
   ].filter(Boolean).join('\\n');
 
@@ -280,10 +287,12 @@ Your job: design the requested number of DISTINCT finished-poster concepts. Each
 Rules:
 - Stay exactly on the user's topic/occasion. Detect greetings and festivals (Diwali, Christmas, New Year, Eid, Pongal, Sankranti, Ugadi, etc.) and write the correct greeting.
 - Minimal words, maximum impact. NOT every poster is headline + subheadline + CTA. A single bold statement, a short quote, or one strong line can be the whole poster. Only include secondaryText or ctaText when it genuinely improves the poster; otherwise return them as empty strings.
-- Premium "visual value" aesthetic: one clear concept, clean geometry, disciplined negative space, refined typography, high contrast, tasteful use of the brand accent color.
+- VISUAL VALUE DIRECTION (very important): design in a premium conceptual style in the spirit of Visualize Value / Jack Butcher - one strong geometric metaphor per poster, clean lines, arrows, grids, circles and simple shapes, stark high-contrast (mostly black and off-white) plus ONE brand accent color, huge disciplined negative space, and one clear idea. Create an ORIGINAL concept; never copy any specific creator, course, template, or artwork.
+- STRONG TOPIC IMAGERY: every concept must contain a strong, specific visual for the exact topic - a clear focal subject or a conceptual metaphor that represents it. Never a plain gradient or empty background. Diwali -> diya/lamp/rangoli geometry; laundry -> washing machine/folded clothes/bubbles; SaaS -> abstract dashboard/nodes/flow; running event -> motion lines/route/finish; donation -> hands/heart/growth. Turn the topic into a clean iconic visual, not a photo collage.
 - Use the locked brand palette. Show the brand name as a small, tasteful wordmark. Never invent a separate logo mark or fake UI.
 - Do NOT invent discounts, dates, prices, phone numbers, addresses, guarantees, awards, or testimonials.
-- Make the concepts visually different from each other (different layout and idea), on the same locked palette and topic.
+- Make the concepts boldly different from EACH OTHER: different metaphor, layout, composition, and focal point - not three colour variations of the same idea. Same locked palette and topic, three genuinely distinct directions.
+- Treat the variation token in the request as a fresh-creativity seed: on every run, explore new metaphors and layouts so repeated requests never return the same posters.
 
 For each concept return an object with:
 - title: short internal name.
@@ -358,7 +367,7 @@ const workflow = {
       parameters: {
         model: 'deepseek-v4-pro',
         options: {
-          temperature: 0.5,
+          temperature: 0.9,
           maxTokens: 2600,
           responseFormat: 'json_object',
           timeout: 360000,
@@ -376,18 +385,6 @@ const workflow = {
           name: 'DeepSeek account',
         },
       },
-    },
-    {
-      parameters: {
-        sessionIdType: 'customKey',
-        sessionKey: '={{ "poster-plan:" + ($node["Normalize Poster Request"].json.payloadForAgents.orgId || "no-org") + ":" + ($node["Normalize Poster Request"].json.payloadForAgents.userId || "anonymous") }}',
-        contextWindowLength: 6,
-      },
-      id: 'deepseek-planning-memory',
-      name: 'DeepSeek Planning Memory',
-      type: '@n8n/n8n-nodes-langchain.memoryBufferWindow',
-      typeVersion: 1.4,
-      position: [620, -460],
     },
     {
       parameters: {
@@ -495,9 +492,6 @@ const workflow = {
     },
     'DeepSeek v4 Pro Model': {
       ai_languageModel: [[{ node: 'DeepSeek Poster Concepts Agent', type: 'ai_languageModel', index: 0 }]],
-    },
-    'DeepSeek Planning Memory': {
-      ai_memory: [[{ node: 'DeepSeek Poster Concepts Agent', type: 'ai_memory', index: 0 }]],
     },
     'DeepSeek Poster Concepts Agent': {
       main: [[{ node: 'Expand Poster Concepts', type: 'main', index: 0 }]],
