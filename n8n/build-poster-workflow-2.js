@@ -90,18 +90,51 @@ return [{
 // Turn the planner's concept set into one item per concept so the image node
 // runs once per concept and we get N finished posters.
 const expandConceptsCode = code(`
+// Tolerant JSON reader: unwrap code fences, then fall back to the first {...} block.
 function parseMaybeJson(value) {
   if (value && typeof value === 'object') return value;
   if (typeof value !== 'string') return {};
   const raw = value.trim().replace(/^\\\`\\\`\\\`json/i, '').replace(/^\\\`\\\`\\\`/, '').replace(/\\\`\\\`\\\`$/, '').trim();
-  try { return JSON.parse(raw); } catch { return {}; }
+  try { return JSON.parse(raw); } catch (e) {}
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    try { return JSON.parse(raw.slice(start, end + 1)); } catch (e2) {}
+  }
+  return {};
+}
+
+// If the planner JSON can't be read, still hand gpt-image-2 clean plain-language
+// prompts built from the request, so it never receives JSON and never hard-fails.
+function fallbackConcepts(src, count) {
+  const topic = src.topic || 'Poster';
+  const angles = [
+    { angle: 'bold statement', mood: 'one bold central statement in huge confident type with generous negative space' },
+    { angle: 'premium minimal', mood: 'a refined minimal composition with elegant type and one subtle accent, calm and premium' },
+    { angle: 'vibrant focal', mood: 'a single strong topic-relevant focal image with a clean color block reserved for the text' },
+    { angle: 'editorial grid', mood: 'a disciplined editorial grid layout with clear hierarchy and a modern feel' },
+  ];
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const a = angles[i % angles.length];
+    out.push({
+      title: 'Concept ' + (i + 1),
+      angle: a.angle,
+      primaryText: topic,
+      secondaryText: '',
+      ctaText: '',
+      imagePrompt: 'A premium, minimalist, high-quality poster about ' + topic + '. Design it as ' + a.mood + '.',
+    });
+  }
+  return out;
 }
 
 const source = $('Normalize Poster Request').item.json.payloadForAgents;
+const count = source.count || 3;
 const parsed = parseMaybeJson($json.output || $json.text || $json);
-let concepts = Array.isArray(parsed.concepts) ? parsed.concepts : [];
-concepts = concepts.slice(0, source.count || 3);
-if (concepts.length === 0) throw new Error('Poster planner did not return any concepts.');
+let concepts = Array.isArray(parsed.concepts) ? parsed.concepts.filter(function (c) { return c && typeof c === 'object'; }) : [];
+concepts = concepts.slice(0, count);
+if (concepts.length === 0) concepts = fallbackConcepts(source, count);
 
 const sizeByFormat = {
   square: '1024x1024',
