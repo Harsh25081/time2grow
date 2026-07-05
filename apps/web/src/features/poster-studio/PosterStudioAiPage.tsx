@@ -147,7 +147,7 @@ export function PosterStudioAiPage() {
     setError('');
 
     // Deterministic concepts render instantly and never depend on a live AI backend.
-    const nextConcepts = buildConceptSet(brief, objective);
+    const nextConcepts = buildConceptSet(brief, objective, brandName);
     setConcepts(nextConcepts);
     setSelectedId(nextConcepts[0]?.id ?? '');
     setSharedBackgroundImage('');
@@ -527,80 +527,154 @@ function firstImage(payload: PosterAgentPayload) {
     || stringValue(payload.poster?.downloadUrl);
 }
 
+type BriefFacts = {
+  greeting: string;
+  festivalNoun: string;
+  brand: string;
+  subject: string;
+};
+
+const FESTIVALS: Array<{ test: RegExp; greeting: string; noun: string }> = [
+  { test: /\b(diwali|deepavali|deepawali|deepwali)\b/i, greeting: 'Happy Diwali', noun: 'Diwali' },
+  { test: /\bholi\b/i, greeting: 'Happy Holi', noun: 'Holi' },
+  { test: /\b(christmas|xmas)\b/i, greeting: 'Merry Christmas', noun: 'Christmas' },
+  { test: /\bnew year\b/i, greeting: 'Happy New Year', noun: 'New Year' },
+  { test: /\beid\b/i, greeting: 'Eid Mubarak', noun: 'Eid' },
+  { test: /\bpongal\b/i, greeting: 'Happy Pongal', noun: 'Pongal' },
+  { test: /\b(makar\s+)?sankranti\b/i, greeting: 'Happy Sankranti', noun: 'Sankranti' },
+  { test: /\b(dussehra|dasara|vijayadashami)\b/i, greeting: 'Happy Dussehra', noun: 'Dussehra' },
+  { test: /\b(ganesh chaturthi|vinayaka chavithi|vinayaka)\b/i, greeting: 'Happy Ganesh Chaturthi', noun: 'Ganesh Chaturthi' },
+  { test: /\bugadi\b/i, greeting: 'Happy Ugadi', noun: 'Ugadi' },
+  { test: /\bnavratri\b/i, greeting: 'Happy Navratri', noun: 'Navratri' },
+  { test: /\bonam\b/i, greeting: 'Happy Onam', noun: 'Onam' },
+  { test: /\b(raksha bandhan|rakhi)\b/i, greeting: 'Happy Raksha Bandhan', noun: 'Raksha Bandhan' },
+  { test: /\b(ramadan|ramzan)\b/i, greeting: 'Ramadan Kareem', noun: 'Ramadan' },
+  { test: /\beaster\b/i, greeting: 'Happy Easter', noun: 'Easter' },
+  { test: /\bvalentine/i, greeting: "Happy Valentine's Day", noun: "Valentine's Day" },
+  { test: /\bindependence day\b/i, greeting: 'Happy Independence Day', noun: 'Independence Day' },
+  { test: /\brepublic day\b/i, greeting: 'Happy Republic Day', noun: 'Republic Day' },
+  { test: /\banniversary\b/i, greeting: 'Happy Anniversary', noun: 'Anniversary' },
+  { test: /\bbirthday\b/i, greeting: 'Happy Birthday', noun: 'Birthday' },
+];
+
+const FILLER_WORDS = new Set([
+  'a', 'an', 'the', 'and', 'or', 'to', 'of', 'in', 'on', 'for', 'from', 'with', 'by', 'our', 'your', 'their', 'us', 'we',
+  'wishes', 'wish', 'wishing', 'greetings', 'greeting', 'poster', 'posters', 'create', 'make', 'design', 'designed',
+  'need', 'want', 'give', 'please', 'warm', 'premium', 'festive', 'festival', 'look', 'looks', 'style', 'styled',
+  'modern', 'minimal', 'clean', 'elegant', 'luxury', 'luxurious', 'vibrant', 'colorful', 'colourful', 'high', 'contrast',
+  'conceptual', 'message', 'brand', 'safe', 'beautiful', 'nice', 'good', 'simple', 'professional', 'best', 'image',
+  'picture', 'graphic', 'social', 'media', 'post', 'ad', 'advertisement', 'creative', 'flyer',
+]);
+
+// Pull a likely brand name out of the brief ("... from AD96", "by Acme Labs").
+function extractBrandFromBrief(brief: string) {
+  const match = brief.match(/\b(?:from|by|for)\s+([A-Z][A-Za-z0-9&.'-]*(?:\s+[A-Z][A-Za-z0-9&.'-]+){0,2})/);
+  return match ? match[1].trim() : '';
+}
+
+function detectFestival(brief: string) {
+  return FESTIVALS.find((festival) => festival.test.test(brief)) ?? null;
+}
+
+// A short, clean, title-cased subject with brief filler/style words removed.
+function cleanSubject(brief: string) {
+  const words = brief
+    .replace(/[^A-Za-z0-9&\s-]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((word) => !FILLER_WORDS.has(word.toLowerCase()));
+  const trimmed = words.slice(0, 6);
+  if (trimmed.length === 0) return '';
+  return trimmed
+    .map((word) => (word === word.toUpperCase() ? word : word.charAt(0).toUpperCase() + word.slice(1)))
+    .join(' ');
+}
+
+function analyzeBrief(brief: string, brandName: string): BriefFacts {
+  const festival = detectFestival(brief);
+  const brand = extractBrandFromBrief(brief) || (brandName.trim() || 'us');
+  return {
+    greeting: festival?.greeting ?? '',
+    festivalNoun: festival?.noun ?? '',
+    brand,
+    subject: cleanSubject(brief),
+  };
+}
+
 // Three visually distinct, on-brand concepts from one brief. The theme (palette)
-// is applied by the caller and locked across the whole set.
-function buildConceptSet(brief: string, objective: string): PosterConcept[] {
-  const topic = cleanTopic(brief);
-  const title = titleForTopic(topic);
+// is applied by the caller and locked across the whole set. Copy is written from
+// the parsed occasion/brand/subject - never echoed verbatim from the raw brief.
+function buildConceptSet(brief: string, objective: string, brandName: string): PosterConcept[] {
+  const facts = analyzeBrief(brief, brandName);
   const lower = objective.toLowerCase();
+
+  if (facts.greeting) {
+    const { greeting, festivalNoun: noun, brand } = facts;
+    return [
+      {
+        id: 'concept-benefit',
+        angle: 'Warm greeting',
+        template: 'spotlight',
+        content: { headline: greeting, subheadline: `Warm wishes from ${brand} for a bright and joyful ${noun}.`, offer: '', callToAction: '' },
+      },
+      {
+        id: 'concept-direct',
+        angle: 'Celebration',
+        template: 'bold',
+        content: { headline: greeting, subheadline: `May your ${noun} sparkle with joy, prosperity, and togetherness.`, offer: "Season's greetings", callToAction: '' },
+      },
+      {
+        id: 'concept-premium',
+        angle: 'Premium wishes',
+        template: 'premium',
+        content: { headline: greeting, subheadline: `${brand} wishes you and your family a warm and prosperous ${noun}.`, offer: '', callToAction: '' },
+      },
+    ];
+  }
+
+  const headline = facts.subject || defaultHeadline(objective);
   const cta = ctaForObjective(lower);
   const eyebrow = eyebrowForObjective(objective, lower);
+  const educational = isEducational(lower);
 
-  const benefit: PosterConcept = {
-    id: 'concept-benefit',
-    angle: 'Benefit spotlight',
-    template: 'spotlight',
-    content: {
-      headline: title,
-      subheadline: benefitLine(topic, lower),
-      offer: '',
-      callToAction: cta,
+  return [
+    {
+      id: 'concept-benefit',
+      angle: 'Benefit spotlight',
+      template: 'spotlight',
+      content: { headline, subheadline: 'A clear, benefit-led message with strong hierarchy and one confident action.', offer: '', callToAction: cta },
     },
-  };
-
-  const direct: PosterConcept = {
-    id: 'concept-direct',
-    angle: 'Direct response',
-    template: 'bold',
-    content: {
-      headline: title,
-      subheadline: directLine(topic, lower),
-      offer: eyebrow,
-      callToAction: cta,
+    {
+      id: 'concept-direct',
+      angle: 'Direct response',
+      template: 'bold',
+      content: { headline, subheadline: 'One strong message, one clear action - designed to get a response.', offer: eyebrow, callToAction: cta },
     },
-  };
-
-  const premium: PosterConcept = {
-    id: 'concept-premium',
-    angle: 'Premium editorial',
-    template: isEducational(lower) ? 'educational' : 'premium',
-    content: {
-      headline: title,
-      subheadline: premiumLine(topic, lower),
-      offer: isEducational(lower) ? 'Useful guide' : '',
-      callToAction: cta,
+    {
+      id: 'concept-premium',
+      angle: educational ? 'Educational' : 'Premium editorial',
+      template: educational ? 'educational' : 'premium',
+      content: { headline, subheadline: educational ? 'A structured, easy-to-follow layout that builds trust and understanding.' : 'A refined, premium layout with generous space and a controlled accent.', offer: educational ? 'Useful guide' : '', callToAction: cta },
     },
-  };
-
-  return [benefit, direct, premium];
+  ];
 }
 
 function isEducational(lower: string) {
   return lower.includes('educat') || lower.includes('guide') || lower.includes('how') || lower.includes('awareness');
 }
 
-function benefitLine(topic: string, lower: string) {
-  if (lower.includes('festive') || lower.includes('wish')) return 'Warm wishes and a clear, brand-safe festive message from our team to yours.';
-  if (lower.includes('donation') || lower.includes('ngo') || lower.includes('awareness')) return 'A clear community message focused on purpose, trust, and easy participation.';
-  if (lower.includes('event') || lower.includes('hackathon') || lower.includes('runathon') || lower.includes('cycling') || lower.includes('community')) return 'Everything readers need to know at a glance, with room for date, venue, and sign-up.';
-  return 'A clean, benefit-first poster for ' + topic.toLowerCase() + ' with strong hierarchy and one clear action.';
-}
-
-function directLine(topic: string, lower: string) {
-  if (lower.includes('festive') || lower.includes('wish')) return 'Share the celebration and keep your brand front and centre.';
-  if (lower.includes('donation')) return 'Every contribution counts. Join in and make a real difference today.';
-  if (lower.includes('event') || lower.includes('hackathon') || lower.includes('runathon') || lower.includes('cycling')) return 'Limited spots. Save your place before registration closes.';
-  return 'One clear message, one strong action. Built to convert for ' + topic.toLowerCase() + '.';
-}
-
-function premiumLine(topic: string, lower: string) {
-  if (lower.includes('festive') || lower.includes('wish')) return 'A refined, premium festive greeting designed around your brand palette.';
-  if (isEducational(lower)) return 'A structured, easy-to-follow poster that builds trust and understanding.';
-  return 'A premium, editorial take on ' + topic.toLowerCase() + ' with generous space and a controlled accent.';
+function defaultHeadline(objective: string) {
+  const lower = objective.toLowerCase();
+  if (lower.includes('donation')) return 'Give a little, change a lot';
+  if (lower.includes('ngo') || lower.includes('awareness')) return 'Together we can do more';
+  if (lower.includes('demo')) return 'See it in action';
+  if (lower.includes('lead')) return 'Grow with us';
+  if (lower.includes('offer')) return 'A better deal, today';
+  if (lower.includes('education')) return 'Learn something useful';
+  return objective && objective !== 'Generic poster' ? objective : 'Your campaign';
 }
 
 function eyebrowForObjective(objective: string, lower: string) {
-  if (lower.includes('festive') || lower.includes('wish')) return 'Celebration';
   if (lower.includes('donation')) return 'Donation drive';
   if (lower.includes('ngo') || lower.includes('awareness')) return 'Awareness';
   if (lower.includes('hackathon')) return 'Hackathon';
@@ -609,11 +683,10 @@ function eyebrowForObjective(objective: string, lower: string) {
   if (lower.includes('event') || lower.includes('community') || lower.includes('invitation')) return 'You are invited';
   if (lower.includes('demo')) return 'Book a demo';
   if (lower.includes('offer')) return 'Featured';
-  return objective;
+  return objective === 'Generic poster' ? 'Featured' : objective;
 }
 
 function ctaForObjective(lower: string) {
-  if (lower.includes('festive') || lower.includes('wish')) return 'Celebrate with us';
   if (lower.includes('donation')) return 'Donate now';
   if (lower.includes('ngo') || lower.includes('awareness')) return 'Support the cause';
   if (lower.includes('hackathon')) return 'Register now';
@@ -624,11 +697,6 @@ function ctaForObjective(lower: string) {
   if (lower.includes('education')) return 'Learn more';
   if (lower.includes('offer')) return 'Claim offer';
   return 'Get started';
-}
-
-function titleForTopic(topic: string) {
-  const clean = topic.trim();
-  return clean.length > 42 ? clean.slice(0, 40).replace(/\s+\S*$/, '') : clean;
 }
 
 function cleanTopic(value: string) {
