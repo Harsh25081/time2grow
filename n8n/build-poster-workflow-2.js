@@ -203,7 +203,7 @@ return [{
     message: 'time2grow poster workflow 2 is ready.',
     models: {
       planner: 'deepseek-v4-pro',
-      imageAgent: 'gpt-image-1',
+      imageAgent: 'gpt-image-2-2026-04-21',
     },
   },
 }];
@@ -355,7 +355,7 @@ const workflow = {
         modelId: {
           __rl: true,
           mode: 'id',
-          value: 'gpt-image-1',
+          value: 'gpt-image-2-2026-04-21',
         },
         prompt: '={{ $json.openAiPrompt }}',
         options: {
