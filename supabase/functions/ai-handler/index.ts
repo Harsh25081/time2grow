@@ -22,17 +22,44 @@ type ActionHandler = (ctx: ActionContext) => Promise<Record<string, unknown>>;
 
 type ColorEntry = { label: string; value: string };
 
+type WebsiteLogoCandidate = { url: URL; label: string; score: number; order: number };
+
+type ContentTarget = 'linkedin' | 'blog' | 'community' | 'video_script';
+type ContentVariant = { target: ContentTarget; title: string; body: string };
+
+type PosterFormat = 'square' | 'portrait' | 'landscape' | 'story' | 'youtube';
+type PosterQuality = 'medium' | 'high';
+type PosterTemplateId = 'signature' | 'spotlight' | 'premium' | 'editorial' | 'bold' | 'educational';
+type PosterConcept = { angle: string; objective: string; reason: string; headline: string; subheadline: string; offer: string; callToAction: string; template: PosterTemplateId };
+
 const DEFAULT_DAILY_ORG_CALL_CAP = 40;
 const DEFAULT_MAX_WEBSITE_BYTES = 512_000;
 const DEFAULT_MAX_WEBSITE_TEXT_CHARS = 6000;
 const DEFAULT_WEBSITE_FETCH_TIMEOUT_MS = 10_000;
 const DEFAULT_OPENAI_TIMEOUT_MS = 25_000;
+const DEFAULT_OPENAI_IMAGE_TIMEOUT_MS = 90_000;
 const DEFAULT_MAX_STYLESHEET_BYTES = 150_000;
+const DEFAULT_MAX_LOGO_BYTES = 2_000_000;
 const MAX_REDIRECTS = 3;
 const MAX_STYLESHEET_FETCHES = 4;
+const supportedLogoMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const postTargets: ContentTarget[] = ['linkedin', 'blog', 'community'];
+const contentTargets: ContentTarget[] = [...postTargets, 'video_script'];
+const posterTemplateIds: PosterTemplateId[] = ['signature', 'spotlight', 'premium', 'editorial', 'bold', 'educational'];
+const posterSizes: Record<PosterFormat, string> = {
+  square: '1024x1024',
+  portrait: '1024x1536',
+  landscape: '1536x1024',
+  story: '1024x1536',
+  youtube: '1536x1024',
+};
 
 const actions: Record<string, ActionHandler> = {
   extract_dna: extractDna,
+  generate_content: generateContent,
+  generate_poster_concepts: generatePosterConcepts,
+  generate_poster: generatePoster,
+  generate_poster_art: generatePosterArt,
 };
 
 Deno.serve(async (req) => {
@@ -86,7 +113,7 @@ async function logAiUsage(supabase: ServiceClient, orgId: string, userId: string
   await supabase.from('ai_usage_log').insert({ org_id: orgId, user_id: userId, action });
 }
 
-async function extractDna({ payload }: ActionContext) {
+async function extractDna({ supabase, orgId, userId, payload }: ActionContext) {
   const websiteUrl = typeof payload.websiteUrl === 'string' ? payload.websiteUrl.trim() : '';
   if (!websiteUrl) throw new HttpError(400, 'Missing websiteUrl.');
   if (websiteUrl.length > 2048) throw new HttpError(400, 'Website URL is too long.');
@@ -111,8 +138,269 @@ async function extractDna({ payload }: ActionContext) {
     },
   ]);
 
-  return { dna: parseDnaCompletion(completion, site.colors) };
+  const logo = await fetchAndStoreWebsiteLogo(supabase, orgId, userId, site.logoCandidates).catch(() => null);
+  const dna = parseDnaCompletion(completion, site.colors);
+
+  return { dna: logo ? { ...dna, logo } : dna };
 }
+async function generateContent({ supabase, orgId, payload }: ActionContext) {
+  const topic = limitedString(payload.topic, 1000);
+  if (!topic) throw new HttpError(400, 'Enter a content brief.');
+
+  const contentType = enumString(payload.contentType, ['post', 'video'], 'post');
+  const tone = limitedString(payload.tone, 120) || 'clear and useful';
+  const offer = limitedString(payload.offer, 300);
+  const callToAction = limitedString(payload.callToAction, 160);
+  const businessDna = await loadBusinessDna(supabase, orgId);
+
+  if (!businessDna) {
+    throw new HttpError(400, 'Save Business DNA before generating content.');
+  }
+
+  if (contentType === 'video') {
+    const scriptLanguage = enumString(payload.scriptLanguage, ['te', 'en', 'te-en'], 'te-en');
+    const scriptDuration = enumString(payload.scriptDuration, ['15', '30', '45', '60'], '30');
+    const scriptType = limitedString(payload.scriptType, 120) || 'direct ad';
+    const completion = await callOpenAi([
+      {
+        role: 'system',
+        content:
+          'You are the time2grow Video Script Writer. Create a scene-by-scene ad/video script from Business DNA and the user brief. Reply with strict JSON only, no prose, matching this exact shape: {"title":string,"summary":string,"variants":[{"target":"video_script","title":string,"body":string}]}. The body must be publish-ready script text with: duration, language, concept, character names and roles, scene-by-scene timing, visual direction, screenplay/action, character dialogue, voice-over, screen text, shot notes, final voice-over, caption, hashtags, CTA, and why it works. For Telugu, use natural Telugu script unless the request asks for transliteration. Do not invent discounts, prices, phone numbers, guarantees, awards, testimonials, addresses, app availability, or legal claims.',
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          request: {
+            brief: topic,
+            tone,
+            offer,
+            callToAction,
+            scriptLanguage,
+            scriptDurationSeconds: scriptDuration,
+            scriptType,
+          },
+          businessDna: summarizeBusinessDna(businessDna),
+          requiredBodyFormat: [
+            'Title and duration',
+            'Characters with names and roles',
+            'Scene 1 - 0:00-0:04 - heading',
+            'Visual direction',
+            'Screenplay/action',
+            'Dialogue with character names',
+            'Voice-over',
+            'Screen text',
+            'Shot notes',
+            'Final voice-over, caption, hashtags, CTA, why it works',
+          ],
+        }),
+      },
+    ], 2200);
+
+    return { content: parseContentCompletion(completion, ['video_script'], topic) };
+  }
+
+  const postTarget = enumString(payload.postTarget, ['linkedin', 'blog', 'community'], 'linkedin');
+  const completion = await callOpenAi([
+    {
+      role: 'system',
+      content:
+        'You are the time2grow Post Writer. Create platform-ready posts from Business DNA and the user brief. Reply with strict JSON only, no prose, matching this exact shape: {"title":string,"summary":string,"variants":[{"target":"linkedin|blog|community","title":string,"body":string}]}. Return exactly one variant for the requested target. For LinkedIn, write a sharp professional post with hook, short paragraphs, insight, CTA, and 3-5 hashtags. For blog, write a structured blog draft with title, intro, headings, useful sections, and CTA. For community, write a friendly conversational group post. Use English, Telugu, or Telugu-English as requested. Do not invent statistics, offers, legal claims, guarantees, testimonials, discounts, contact details, or addresses.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        request: {
+          brief: topic,
+          target: postTarget,
+          tone,
+          offer,
+          callToAction,
+        },
+        businessDna: summarizeBusinessDna(businessDna),
+      }),
+    },
+  ], postTarget === 'blog' ? 2200 : 1400);
+
+  return { content: parseContentCompletion(completion, [postTarget], topic) };
+}
+async function generatePosterConcepts({ supabase, orgId, payload }: ActionContext) {
+  const topic = limitedString(payload.topic, 700);
+  if (!topic) throw new HttpError(400, 'Enter a poster topic.');
+
+  const style = limitedString(payload.style, 120) || 'premium clean marketing poster';
+  const format = enumString(payload.format, ['square', 'portrait', 'landscape', 'story', 'youtube'], 'portrait');
+  const existingHeadlines = Array.isArray(payload.existingHeadlines)
+    ? payload.existingHeadlines.map((item) => limitedString(item, 120)).filter(Boolean).slice(0, 12)
+    : [];
+  const businessDna = await loadBusinessDna(supabase, orgId);
+
+  if (!businessDna) {
+    throw new HttpError(400, 'Save Business DNA before creating poster options.');
+  }
+
+  const completion = await callOpenAi([
+    {
+      role: 'system',
+      content:
+        'You are the Poster Studio strategy agent for time2grow. The user topic is the product or campaign contract. Create poster suggestions only for that topic, never generic brand or advertising copy. Reply with strict JSON only, no prose, matching this exact shape: {"concepts":[{"angle":string,"objective":string,"reason":string,"headline":string,"subheadline":string,"offer":string,"callToAction":string,"template":"signature|spotlight|premium|editorial|bold|educational"}]}. Return exactly 5 concepts. Every headline or subheadline must visibly mention the topic/product/category or its clear domain words. If the topic is CMS SaaS, use CMS, content management, website publishing, editors, approvals, pages, or workflows. Do not drift into generic advertising, agency, branding, or marketing lines unless those words are in the user topic. objective must be one of: Lead generation, Brand awareness, Demo booking, Product education, Trust proof, Feature adoption, Offer conversion. reason must explain why this poster exists for the given topic in one short sentence. Use genuinely different angles and pick a fitting template for each concept. Keep headline under 9 words, subheadline under 18 words, and CTA under 5 words. Do not invent discounts, phone numbers, claims, guarantees, addresses, awards, or testimonials. If no offer or CTA is evident, use empty strings or safe generic CTAs.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        topic,
+        style,
+        format,
+        existingHeadlines,
+        businessDna: summarizeBusinessDna(businessDna),
+      }),
+    },
+  ], 1100);
+
+  return { concepts: parsePosterConceptsCompletion(completion, existingHeadlines, topic) };
+}
+async function generatePoster({ supabase, orgId, userId, payload }: ActionContext) {
+  const headline = limitedString(payload.headline, 120);
+  if (!headline) throw new HttpError(400, 'Enter a poster headline.');
+
+  const subheadline = limitedString(payload.subheadline, 180);
+  const offer = limitedString(payload.offer, 160);
+  const callToAction = limitedString(payload.callToAction, 80);
+  const style = limitedString(payload.style, 120) || 'premium clean marketing poster';
+  const format = enumString(payload.format, ['square', 'portrait', 'landscape', 'story', 'youtube'], 'portrait');
+  const quality = enumString(payload.quality, ['medium', 'high'], 'high');
+  const businessDna = await loadBusinessDna(supabase, orgId);
+
+  if (!businessDna) {
+    throw new HttpError(400, 'Save Business DNA before creating posters.');
+  }
+
+  const prompt = buildPosterPrompt({ headline, subheadline, offer, callToAction, style, format, businessDna });
+  const image = await generatePosterImage(prompt, { size: posterSizes[format], quality });
+  const bytes = base64ToBytes(image.b64Json);
+  const fileName = `${safeFileName(headline)}-${Date.now()}.png`;
+
+  const { data: contentItem, error: contentError } = await supabase
+    .from('content_items')
+    .insert({
+      org_id: orgId,
+      content_type: 'poster',
+      title: headline,
+      body: posterBodyText({ headline, subheadline, offer, callToAction }),
+      status: 'ready',
+      created_by: userId,
+    })
+    .select('*')
+    .single();
+
+  if (contentError || !contentItem) throw contentError ?? new HttpError(500, 'Could not save poster content.');
+
+  const storagePath = `${orgId}/poster-studio/${contentItem.id}/${fileName}`;
+  const mimeType = 'image/png';
+  const upload = await supabase.storage.from('post-media').upload(storagePath, new Blob([bytes], { type: mimeType }), {
+    cacheControl: '3600',
+    contentType: mimeType,
+    upsert: false,
+  });
+
+  if (upload.error) throw new HttpError(500, upload.error.message || 'Could not save generated poster image.');
+
+  const { data: asset, error: assetError } = await supabase
+    .from('social_media_assets')
+    .insert({
+      org_id: orgId,
+      content_item_id: contentItem.id,
+      media_type: 'poster',
+      file_name: fileName,
+      mime_type: mimeType,
+      size_bytes: bytes.byteLength,
+      storage_bucket: 'post-media',
+      storage_path: storagePath,
+      created_by: userId,
+    })
+    .select('*')
+    .single();
+
+  if (assetError || !asset) throw assetError ?? new HttpError(500, 'Could not save poster media asset.');
+
+  const signedUrl = await createSignedStorageUrl(supabase, 'post-media', storagePath, 60 * 60 * 24 * 7);
+  await supabase.from('content_items').update({ media_url: signedUrl }).eq('id', contentItem.id);
+
+  return {
+    poster: {
+      contentItemId: contentItem.id,
+      assetId: asset.id,
+      title: headline,
+      imageUrl: signedUrl,
+      downloadUrl: `data:${mimeType};base64,${image.b64Json}`,
+      fileName,
+      size: posterSizes[format],
+      prompt,
+    },
+  };
+}
+async function generatePosterArt({ supabase, orgId, payload }: ActionContext) {
+  const brief = limitedString(payload.brief, 900);
+  if (!brief) throw new HttpError(400, 'Enter a short poster brief.');
+
+  const format = enumString(payload.format, ['square', 'portrait', 'landscape', 'story', 'youtube'], 'portrait');
+  const quality = enumString(payload.quality, ['medium', 'high'], 'high');
+  const businessDna = await loadBusinessDna(supabase, orgId);
+
+  if (!businessDna) {
+    throw new HttpError(400, 'Save Business DNA before creating posters.');
+  }
+
+  const summary = summarizeBusinessDna(businessDna);
+  const brandColors = Array.isArray(summary.brandColors)
+    ? summary.brandColors.map((color) => color.value).filter(Boolean).slice(0, 4)
+    : [];
+
+  const completion = await callOpenAi([
+    {
+      role: 'system',
+      content:
+        'You are the art director for a premium poster studio. Given a short brief and brand facts, reply with STRICT JSON only, no prose, matching this exact shape: {"imagePrompt":string,"headline":string,"subheadline":string,"message":string,"callToAction":string}. imagePrompt vividly describes premium BACKGROUND artwork for a poster (scene, subject, mood, lighting, colour, motifs, composition, art style) in 60 to 120 words. It MUST end with exactly: "No text, no letters, no words, no numbers, no typography, no logos, and no watermarks anywhere in the image. Leave calm, uncluttered negative space in the lower half of the frame for text that will be added separately." Use the provided brand colours when they fit the brief. headline: under 8 words. subheadline: under 16 words. message: a warm, genuine 1 to 2 sentence body that matches the brief. callToAction: under 5 words, or an empty string. Spell every word correctly. Never invent discounts, prices, phone numbers, addresses, dates, awards, guarantees, or testimonials.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({ brief, format, brandColors, businessDna: summary }),
+    },
+  ], 900);
+
+  const plan = parsePosterArtCompletion(completion);
+  const image = await generatePosterImage(plan.imagePrompt, { size: posterSizes[format], quality });
+
+  return {
+    imageDataUrl: `data:image/png;base64,${image.b64Json}`,
+    copy: {
+      headline: plan.headline,
+      subheadline: plan.subheadline,
+      message: plan.message,
+      callToAction: plan.callToAction,
+    },
+  };
+}
+
+function parsePosterArtCompletion(raw: string) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const imagePrompt = stringField(parsed.imagePrompt).trim();
+  if (!imagePrompt) throw new HttpError(502, 'The AI did not return an art prompt. Try again.');
+
+  return {
+    imagePrompt: imagePrompt.slice(0, 2000),
+    headline: stringField(parsed.headline).trim().slice(0, 120),
+    subheadline: stringField(parsed.subheadline).trim().slice(0, 200),
+    message: stringField(parsed.message).trim().slice(0, 600),
+    callToAction: stringField(parsed.callToAction).trim().slice(0, 80),
+  };
+}
+
 function parseHttpUrl(value: string) {
   let parsed: URL;
   try {
@@ -163,6 +451,7 @@ async function fetchSiteContext(url: URL) {
     const html = await readLimitedText(response, maxWebsiteBytes());
     const stylesheetText = await fetchLinkedStylesheets(nextUrl, html);
     const detectedColors = extractBrandColorCandidates(`${html}\n${stylesheetText}`);
+    const logoCandidates = extractLogoCandidates(nextUrl, html);
     const text = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -174,13 +463,14 @@ async function fetchSiteContext(url: URL) {
     return {
       text: text.slice(0, maxWebsiteTextChars()),
       colors: detectedColors,
+      logoCandidates,
     };
   }
 
   throw new HttpError(400, 'That website redirected too many times.');
 }
 
-async function callOpenAi(messages: Array<{ role: string; content: string }>) {
+async function callOpenAi(messages: Array<{ role: string; content: string }>, maxTokens = 900) {
   const apiKey = requiredEnv('OPENAI_API_KEY');
   const model = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini';
   const controller = new AbortController();
@@ -197,7 +487,7 @@ async function callOpenAi(messages: Array<{ role: string; content: string }>) {
       model,
       messages,
       temperature: 0.4,
-      max_tokens: 900,
+      max_tokens: maxTokens,
       response_format: { type: 'json_object' },
     }),
   }).catch((error) => {
@@ -218,6 +508,307 @@ async function callOpenAi(messages: Array<{ role: string; content: string }>) {
   return content;
 }
 
+function buildPosterPrompt({
+  headline,
+  subheadline,
+  offer,
+  callToAction,
+  style,
+  format,
+  businessDna,
+}: {
+  headline: string;
+  subheadline: string;
+  offer: string;
+  callToAction: string;
+  style: string;
+  format: PosterFormat;
+  businessDna: Record<string, unknown>;
+}) {
+  const dna = summarizeBusinessDna(businessDna);
+  const brandColors = Array.isArray(dna.brandColors) && dna.brandColors.length > 0
+    ? dna.brandColors.map((color: ColorEntry) => `${color.label}: ${color.value}`).join(', ')
+    : 'Use tasteful brand-safe colors inferred from the business.';
+
+  return [
+    `Create a premium ${format} social media poster as a finished marketing design.`,
+    `Style: ${style}.`,
+    `Headline text, exactly: ${headline}`,
+    subheadline ? `Subheadline text, exactly: ${subheadline}` : '',
+    offer ? `Offer text, exactly: ${offer}` : '',
+    callToAction ? `Call-to-action text, exactly: ${callToAction}` : '',
+    `Brand positioning: ${dna.positioning || dna.mission || 'clear useful growth brand'}`,
+    `Audience: ${dna.audience || 'small business owners and creators'}`,
+    `Brand colors: ${brandColors}`,
+    'Design requirements: premium composition, strong hierarchy, readable typography, polished spacing, no clutter, no misspelled words, no fake logos, no QR codes, no watermarks, no contact details unless provided, no unrealistic claims.',
+    'Make it ready to download and post directly on social media.',
+  ].filter(Boolean).join('\n');
+}
+
+function posterBodyText({ headline, subheadline, offer, callToAction }: { headline: string; subheadline: string; offer: string; callToAction: string }) {
+  return [headline, subheadline, offer, callToAction].filter(Boolean).join('\n');
+}
+
+// Provider-agnostic image adapter. Default: OpenAI Images. Add cases here for
+// Gemini / Nano Banana / DeepSeek etc. and select with the IMAGE_PROVIDER env var.
+async function generatePosterImage(prompt: string, options: { size: string; quality: PosterQuality }) {
+  const provider = (Deno.env.get('IMAGE_PROVIDER') || 'openai').toLowerCase();
+  if (provider === 'openai') return callOpenAiImage(prompt, options);
+  throw new HttpError(500, `Image provider "${provider}" is not configured. Set IMAGE_PROVIDER=openai, or add an adapter for this provider.`);
+}
+
+async function callOpenAiImage(prompt: string, options: { size: string; quality: PosterQuality }) {
+  const apiKey = requiredEnv('OPENAI_API_KEY');
+  const model = Deno.env.get('OPENAI_IMAGE_MODEL') || 'gpt-image-1';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), openAiImageTimeoutMs());
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    signal: controller.signal,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      prompt,
+      size: options.size,
+      quality: options.quality,
+      output_format: 'png',
+      background: 'opaque',
+    }),
+  }).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new HttpError(504, 'The image generator timed out. Try again.');
+    }
+    throw new HttpError(502, 'The image generator did not respond.');
+  }).finally(() => clearTimeout(timeout));
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = typeof body?.error?.message === 'string' ? body.error.message : 'The image generator did not respond.';
+    throw new HttpError(502, message);
+  }
+
+  const b64Json = stringField(body?.data?.[0]?.b64_json)
+    || stringField(body?.data?.[0]?.b64)
+    || imageResultFromResponsesOutput(body);
+
+  if (!b64Json) throw new HttpError(502, 'The image generator returned no image.');
+  return { b64Json };
+}
+
+function imageResultFromResponsesOutput(body: Record<string, unknown>) {
+  const output = Array.isArray(body.output) ? body.output : [];
+  for (const item of output) {
+    if (!item || typeof item !== 'object') continue;
+    const record = item as Record<string, unknown>;
+    const result = stringField(record.result) || stringField(record.b64_json);
+    if (result) return result;
+  }
+  return '';
+}
+
+async function createSignedStorageUrl(supabase: ServiceClient, bucket: string, path: string, expiresIn: number) {
+  const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, expiresIn);
+  if (error || !data?.signedUrl) throw new HttpError(500, error?.message ?? 'Could not create poster preview URL.');
+  return data.signedUrl;
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function safeFileName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'poster';
+}
+function parsePosterConceptsCompletion(raw: string, existingHeadlines: string[], topic: string) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const seen = new Set(existingHeadlines.map((headline) => headline.toLowerCase()));
+  const topicTerms = significantTopicTerms(topic);
+  const concepts = Array.isArray(parsed.concepts)
+    ? parsed.concepts
+        .map((concept) => normalizePosterConcept(concept))
+        .filter((concept): concept is PosterConcept => Boolean(concept))
+        .filter((concept) => conceptMatchesTopic(concept, topicTerms))
+        .filter((concept) => {
+          const key = concept.headline.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 5)
+    : [];
+
+  if (concepts.length === 0) throw new HttpError(502, 'The AI response was too generic for this topic. Try again with the product name or add more details.');
+  return concepts;
+}
+
+function normalizePosterConcept(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const headline = limitedString(record.headline, 120);
+  const subheadline = limitedString(record.subheadline, 180);
+  if (!headline || !subheadline) return null;
+
+  return {
+    angle: limitedString(record.angle, 120) || 'Poster concept',
+    objective: limitedString(record.objective, 80) || posterObjectiveForAngle(limitedString(record.angle, 120)),
+    reason: limitedString(record.reason, 220),
+    headline,
+    subheadline,
+    offer: limitedString(record.offer, 160),
+    callToAction: limitedString(record.callToAction, 80),
+    template: posterTemplateString(record.template) || posterTemplateForAngle(limitedString(record.angle, 120)),
+  };
+}
+function significantTopicTerms(topic: string) {
+  const stopWords = new Set(['for', 'and', 'the', 'with', 'from', 'that', 'this', 'your', 'about', 'poster', 'posters', 'create', 'make', 'give', 'need', 'want', 'saas', 'app', 'tool', 'platform', 'software', 'service']);
+  return topic
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .split(/[\s-]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 3 && !stopWords.has(term))
+    .slice(0, 8);
+}
+
+function conceptMatchesTopic(concept: PosterConcept, topicTerms: string[]) {
+  if (topicTerms.length === 0) return true;
+  const text = [concept.headline, concept.subheadline, concept.reason, concept.angle]
+    .join(' ')
+    .toLowerCase();
+  return topicTerms.some((term) => text.includes(term));
+}
+
+function posterObjectiveForAngle(value: string) {
+  const text = value.toLowerCase();
+  if (text.includes('demo')) return 'Demo booking';
+  if (text.includes('lead') || text.includes('direct') || text.includes('offer')) return 'Lead generation';
+  if (text.includes('educat') || text.includes('guide') || text.includes('how')) return 'Product education';
+  if (text.includes('proof') || text.includes('trust') || text.includes('authority')) return 'Trust proof';
+  if (text.includes('feature') || text.includes('workflow')) return 'Feature adoption';
+  return 'Brand awareness';
+}
+function posterTemplateString(value: unknown): PosterTemplateId | '' {
+  return typeof value === 'string' && posterTemplateIds.includes(value as PosterTemplateId) ? value as PosterTemplateId : '';
+}
+
+function posterTemplateForAngle(value: string): PosterTemplateId {
+  const text = value.toLowerCase();
+  if (text.includes('educat') || text.includes('guide') || text.includes('how')) return 'educational';
+  if (text.includes('offer') || text.includes('direct') || text.includes('sale') || text.includes('urgent')) return 'bold';
+  if (text.includes('premium') || text.includes('luxury')) return 'premium';
+  if (text.includes('authority') || text.includes('proof') || text.includes('trust')) return 'editorial';
+  if (text.includes('emotion') || text.includes('benefit')) return 'spotlight';
+  return 'signature';
+}
+function parseContentCompletion(raw: string, requestedTargets: ContentTarget[], fallbackTitle: string) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const variants = Array.isArray(parsed.variants)
+    ? parsed.variants
+        .map((variant) => normalizeContentVariant(variant))
+        .filter((variant): variant is ContentVariant => Boolean(variant))
+    : [];
+
+  const completeVariants = requestedTargets
+    .map((target) => variants.find((variant) => variant.target === target))
+    .filter((variant): variant is ContentVariant => Boolean(variant));
+
+  if (completeVariants.length === 0) {
+    throw new HttpError(502, 'The AI response did not include usable content.');
+  }
+
+  return {
+    title: limitedString(parsed.title, 140) || fallbackTitle,
+    summary: limitedString(parsed.summary, 280),
+    variants: completeVariants,
+  };
+}
+
+function normalizeContentVariant(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const target = targetString(record.target) || targetString(record.platform);
+  const title = limitedString(record.title, 140);
+  const body = limitedString(record.body, 6000);
+  if (!target || !body) return null;
+  return { target, title: title || targetLabel(target), body };
+}
+
+async function loadBusinessDna(supabase: ServiceClient, orgId: string) {
+  const { data, error } = await supabase
+    .from('business_dna')
+    .select('website_url, mission, vision, positioning, values, audience, proof_points, growth_goal, key_metric, additional_notes, brand_colors, logo_storage_bucket, logo_storage_path, logo_file_name, logo_mime_type, logo_size_bytes, logo_alt_text')
+    .eq('org_id', orgId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+function summarizeBusinessDna(dna: Record<string, unknown>) {
+  return {
+    websiteUrl: limitedString(dna.website_url, 200),
+    mission: limitedString(dna.mission, 700),
+    vision: limitedString(dna.vision, 700),
+    positioning: limitedString(dna.positioning, 900),
+    values: limitedString(dna.values, 700),
+    audience: limitedString(dna.audience, 900),
+    proofPoints: limitedString(dna.proof_points, 900),
+    growthGoal: limitedString(dna.growth_goal, 700),
+    keyMetric: limitedString(dna.key_metric, 200),
+    additionalNotes: limitedString(dna.additional_notes, 900),
+    brandColors: colorFields(dna.brand_colors, []),
+    logo: {
+      storageBucket: limitedString(dna.logo_storage_bucket, 80),
+      storagePath: limitedString(dna.logo_storage_path, 500),
+      fileName: limitedString(dna.logo_file_name, 180),
+      mimeType: limitedString(dna.logo_mime_type, 80),
+      sizeBytes: typeof dna.logo_size_bytes === 'number' ? dna.logo_size_bytes : null,
+      altText: limitedString(dna.logo_alt_text, 180),
+    },
+  };
+}
+
+function targetString(value: unknown): ContentTarget | '' {
+  return typeof value === 'string' && contentTargets.includes(value as ContentTarget) ? value as ContentTarget : '';
+}
+
+function targetLabel(target: ContentTarget) {
+  return {
+    linkedin: 'LinkedIn',
+    blog: 'Blog',
+    community: 'Community',
+    video_script: 'Video script',
+  }[target];
+}
+
+function enumString<T extends string>(value: unknown, allowed: T[], fallback: T) {
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : fallback;
+}
+
+function limitedString(value: unknown, maxLength: number) {
+  return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
 function parseDnaCompletion(raw: string, fallbackColors: ColorEntry[]) {
   let parsed: Record<string, unknown>;
   try {
@@ -295,6 +886,182 @@ async function fetchLinkedStylesheets(baseUrl: URL, html: string) {
   }
 
   return stylesheets.join('\n');
+}
+
+async function fetchAndStoreWebsiteLogo(supabase: ServiceClient, orgId: string, userId: string, candidates: WebsiteLogoCandidate[]) {
+  for (const candidate of candidates.slice(0, 8)) {
+    try {
+      const logo = await fetchLogoAsset(candidate.url);
+      if (!logo) continue;
+
+      const extension = logoExtension(logo.mimeType);
+      const fileName = `website-logo-${Date.now()}.${extension}`;
+      const storagePath = `${orgId}/brand-assets/logo/${fileName}`;
+      const upload = await supabase.storage.from('post-media').upload(storagePath, new Blob([logo.bytes], { type: logo.mimeType }), {
+        cacheControl: '3600',
+        contentType: logo.mimeType,
+        upsert: false,
+      });
+
+      if (upload.error) continue;
+
+      const imageUrl = await createSignedStorageUrl(supabase, 'post-media', storagePath, 60 * 60 * 24 * 7);
+      return {
+        storageBucket: 'post-media',
+        storagePath,
+        fileName,
+        mimeType: logo.mimeType,
+        sizeBytes: logo.bytes.byteLength,
+        altText: candidate.label || 'Business logo',
+        imageUrl,
+        sourceUrl: logo.sourceUrl,
+      };
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function fetchLogoAsset(startUrl: URL) {
+  let nextUrl = startUrl;
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    assertPublicWebsiteUrl(nextUrl);
+    await assertPublicDns(nextUrl);
+    const response = await fetchWithTimeout(nextUrl);
+
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (!location) return null;
+      nextUrl = new URL(location, nextUrl);
+      continue;
+    }
+
+    if (!response.ok) return null;
+
+    const mimeType = logoMimeType(response.headers.get('content-type') ?? '', nextUrl.pathname);
+    if (!mimeType) return null;
+
+    const contentLength = Number(response.headers.get('content-length') ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > maxLogoBytes()) return null;
+
+    const bytes = await readLimitedBytes(response, maxLogoBytes());
+    return { bytes, mimeType, sourceUrl: nextUrl.toString() };
+  }
+
+  return null;
+}
+
+async function readLimitedBytes(response: Response, maxBytes: number) {
+  if (!response.body) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => null);
+      throw new HttpError(413, 'That website logo is too large to save.');
+    }
+
+    chunks.push(value);
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  return bytes;
+}
+
+function extractLogoCandidates(baseUrl: URL, html: string) {
+  const candidates: WebsiteLogoCandidate[] = [];
+  let order = 0;
+
+  const add = (rawUrl: string, label: string, score: number) => {
+    if (!rawUrl || rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return;
+    try {
+      const url = new URL(rawUrl.replace(/&amp;/g, '&'), baseUrl);
+      assertPublicWebsiteUrl(url);
+      candidates.push({ url, label: label || 'Business logo', score, order: order++ });
+    } catch {
+      return;
+    }
+  };
+
+  for (const tag of html.matchAll(/<img\b[^>]*>/gi)) {
+    const img = tag[0];
+    const src = htmlAttribute(img, 'src') || imageUrlFromSrcset(htmlAttribute(img, 'srcset'));
+    const alt = htmlAttribute(img, 'alt');
+    const className = htmlAttribute(img, 'class');
+    const id = htmlAttribute(img, 'id');
+    const context = `${alt} ${className} ${id} ${src}`;
+    if (!/(logo|brand|wordmark|site-title|navbar-brand|custom-logo)/i.test(context)) continue;
+    const score = 20 + (/(header|nav|navbar|masthead)/i.test(context) ? 6 : 0) + (/logo/i.test(alt) ? 4 : 0);
+    add(src, alt, score);
+  }
+
+  for (const tag of html.matchAll(/<link\b[^>]*>/gi)) {
+    const link = tag[0];
+    const rel = htmlAttribute(link, 'rel').toLowerCase();
+    const href = htmlAttribute(link, 'href');
+    if (!href) continue;
+    if (rel.includes('apple-touch-icon')) add(href, 'Website icon', 8);
+    else if (rel.includes('icon')) add(href, 'Website icon', 5);
+  }
+
+  for (const tag of html.matchAll(/<meta\b[^>]*>/gi)) {
+    const meta = tag[0];
+    const property = `${htmlAttribute(meta, 'property')} ${htmlAttribute(meta, 'name')}`.toLowerCase();
+    const content = htmlAttribute(meta, 'content');
+    if (!content) continue;
+    if (property.includes('og:image') || property.includes('twitter:image')) add(content, 'Website image', 2);
+  }
+
+  const seen = new Set<string>();
+  return candidates
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .filter((candidate) => {
+      const key = candidate.url.toString().split('#')[0];
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 12);
+}
+
+function imageUrlFromSrcset(srcset: string) {
+  return srcset.split(',').map((part) => part.trim().split(/\s+/)[0]).find(Boolean) ?? '';
+}
+
+function logoMimeType(contentType: string, pathname: string) {
+  const mimeType = contentType.split(';')[0].trim().toLowerCase();
+  if (supportedLogoMimeTypes.has(mimeType)) return mimeType;
+
+  const extension = pathname.toLowerCase().split('.').pop() ?? '';
+  if (extension === 'png') return 'image/png';
+  if (extension === 'jpg' || extension === 'jpeg') return 'image/jpeg';
+  if (extension === 'webp') return 'image/webp';
+  if (extension === 'gif') return 'image/gif';
+  return '';
+}
+
+function logoExtension(mimeType: string) {
+  if (mimeType === 'image/jpeg') return 'jpg';
+  if (mimeType === 'image/webp') return 'webp';
+  if (mimeType === 'image/gif') return 'gif';
+  return 'png';
 }
 
 function extractStylesheetUrls(baseUrl: URL, html: string) {
@@ -641,6 +1408,10 @@ function maxStylesheetBytes() {
 
 function openAiTimeoutMs() {
   return numberEnv('AI_OPENAI_TIMEOUT_MS', DEFAULT_OPENAI_TIMEOUT_MS, 5000, 60_000);
+}
+
+function openAiImageTimeoutMs() {
+  return numberEnv('AI_OPENAI_IMAGE_TIMEOUT_MS', DEFAULT_OPENAI_IMAGE_TIMEOUT_MS, 15_000, 180_000);
 }
 
 function numberEnv(name: string, fallback: number, min: number, max: number) {
