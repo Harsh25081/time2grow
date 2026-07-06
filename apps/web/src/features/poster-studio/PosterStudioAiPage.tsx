@@ -67,7 +67,6 @@ export function PosterStudioAiPage() {
   const [saving, setSaving] = useState(false);
   const [brief, setBrief] = useState('');
   const [objective, setObjective] = useState('');
-  const [style, setStyle] = useState('Premium, high-contrast, minimal words, strong hierarchy');
   const [format, setFormat] = useState<PosterFormat>('portrait');
 
   const [concepts, setConcepts] = useState<PosterConcept[]>([]);
@@ -171,7 +170,6 @@ export function PosterStudioAiPage() {
       const payload = await requestAiPoster({
         brief,
         objective,
-        style,
         format,
         orgId: organization?.id ?? '',
         userId: user?.id ?? '',
@@ -331,10 +329,6 @@ export function PosterStudioAiPage() {
             <label className="poster-field">
               <span>Goal (optional)</span>
               <input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Leave blank, or add a goal e.g. festive wishes, lead generation" />
-            </label>
-            <label className="poster-field">
-              <span>Style</span>
-              <input value={style} onChange={(event) => setStyle(event.target.value)} />
             </label>
             <label className="poster-field">
               <span>Size</span>
@@ -503,7 +497,6 @@ export function PosterStudioAiPage() {
 async function requestAiPoster(params: {
   brief: string;
   objective: string;
-  style: string;
   format: PosterFormat;
   orgId: string;
   userId: string;
@@ -532,7 +525,6 @@ async function requestAiPoster(params: {
 async function requestN8nPoster(params: {
   brief: string;
   objective: string;
-  style: string;
   format: PosterFormat;
   orgId: string;
   userId: string;
@@ -562,8 +554,6 @@ async function requestN8nPoster(params: {
         brief: params.brief,
         topic: params.brief,
         objective: params.objective,
-        preferredStyle: params.style,
-        style: params.style,
         format: params.format,
         count: 3,
         brandName: params.brandName,
