@@ -186,8 +186,12 @@ return concepts.map(function (concept, index) {
       angle: String(concept.angle || '').trim(),
       copy: { headline: primaryText, subheadline: secondaryText, callToAction: ctaText },
       openAiPrompt: finalPrompt,
-      imageSize: sizeByFormat[source.format] || '1024x1536',
-      imageQuality: 'high',
+      // 'auto' lets gpt-image-2 choose an accepted size/quality (sidesteps a
+      // rejected fixed value and any size cap). Restore sizeByFormat once the
+      // model's accepted sizes are confirmed. Aspect target kept for reference.
+      imageSize: 'auto',
+      imageQuality: 'auto',
+      aspectTarget: sizeByFormat[source.format] || '1024x1536',
     },
   };
 });
