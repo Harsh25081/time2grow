@@ -149,14 +149,23 @@ export function PosterStudioAiPage() {
     setGenerating(true);
     setMessage('');
     setError('');
-
-    // Template concepts render instantly and are the fallback if the AI image
-    // backend (n8n / ai-handler) is unreachable.
-    const nextConcepts = buildConceptSet(brief, objective, brandName);
-    setConcepts(nextConcepts);
     setAiPosters([]);
-    setSelectedId(nextConcepts[0]?.id ?? '');
-    setMessage('Designing 3 posters with AI. This can take up to a minute...');
+
+    const hasWorkflow = Boolean(env.n8nPosterWebhookUrl.trim());
+
+    // Offline only: with no workflow configured, the app renders its own
+    // editable template concepts. When a workflow IS configured, the result
+    // comes exclusively from that workflow - the app never substitutes its own.
+    if (hasWorkflow) {
+      setConcepts([]);
+      setSelectedId('');
+      setMessage('Sending your request to the poster workflow. This can take up to a minute...');
+    } else {
+      const nextConcepts = buildConceptSet(brief, objective, brandName);
+      setConcepts(nextConcepts);
+      setSelectedId(nextConcepts[0]?.id ?? '');
+      setMessage('No poster workflow is configured, so these are editable template concepts. Pick one, edit, then export.');
+    }
 
     try {
       const payload = await requestAiPoster({
@@ -177,18 +186,22 @@ export function PosterStudioAiPage() {
         if (posters.length > 0) {
           setAiPosters(posters);
           setSelectedId(posters[0].id);
-          setMessage(`Generated ${posters.length} AI poster${posters.length > 1 ? 's' : ''}. Pick your favourite, then Download, Save, or send to Social Hub.`);
+          setMessage(`Your workflow returned ${posters.length} poster${posters.length > 1 ? 's' : ''}. Pick one, then Download, Save, or send to Social Hub.`);
           return;
         }
         if (payload.ok === false && payload.error) {
           setError(payload.error);
+        } else if (hasWorkflow) {
+          setError('The workflow ran but returned no image. Open the workflow output to see what it sent back.');
         }
+      } else if (hasWorkflow) {
+        setError('Could not reach the poster workflow at ' + env.n8nPosterWebhookUrl.trim() + '. Is n8n running and the workflow active?');
       }
 
-      setMessage('No AI images came back, so here are 3 editable template concepts instead. Pick one, edit the text, then export.');
+      if (hasWorkflow) setMessage('');
     } catch (generateError) {
-      setError(errorMessage(generateError, 'The AI image service failed.'));
-      setMessage('Showing 3 editable template concepts instead. Pick one, edit the text, then export.');
+      setError(errorMessage(generateError, 'The poster workflow failed.'));
+      if (hasWorkflow) setMessage('');
     } finally {
       setGenerating(false);
     }
@@ -499,9 +512,13 @@ async function requestAiPoster(params: {
   businessDna: BusinessDnaRow | null;
   logoUrl: string;
 }): Promise<PosterAgentPayload | null> {
-  const n8n = await requestN8nPoster(params).catch(() => null);
-  if (n8n) return n8n;
+  // When an n8n webhook is configured, it is the ONLY poster engine - the app
+  // just relays the request and renders whatever the workflow returns.
+  if (env.n8nPosterWebhookUrl.trim()) {
+    return await requestN8nPoster(params).catch(() => null);
+  }
 
+  // No workflow configured: use the Supabase ai-handler as an offline engine.
   if (supabase && params.orgId) {
     const { data, error } = await supabase.functions.invoke('ai-handler', {
       body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, quality: 'high' },
@@ -539,8 +556,11 @@ async function requestN8nPoster(params: {
         action: 'poster_set',
         orgId: params.orgId,
         userId: params.userId,
+        // Raw request text, unmodified - the workflow decides how to interpret it.
         userIdea: params.brief,
-        topic: cleanTopic(params.brief),
+        rawBrief: params.brief,
+        brief: params.brief,
+        topic: params.brief,
         objective: params.objective,
         preferredStyle: params.style,
         style: params.style,
@@ -787,21 +807,6 @@ function ctaForObjective(lower: string) {
   if (lower.includes('education')) return 'Learn more';
   if (lower.includes('offer')) return 'Claim offer';
   return 'Get started';
-}
-
-function cleanTopic(value: string) {
-  const withoutObjective = value
-    .replace(/\bobjective\s*:\s*[^.;\n]+/gi, '')
-    .replace(/\bgoal\s*:\s*[^.;\n]+/gi, '')
-    .replace(/\bintent\s*:\s*[^.;\n]+/gi, '');
-  const first = withoutObjective.split(/[;\n]/)[0]?.trim() || withoutObjective.trim() || 'Your campaign';
-  return first
-    .replace(/^create\s+/i, '')
-    .replace(/^make\s+/i, '')
-    .replace(/^a\s+poster\s+for\s+/i, '')
-    .replace(/^poster\s+for\s+/i, '')
-    .replace(/\s+/g, ' ')
-    .trim() || 'Your campaign';
 }
 
 function parseBrandColors(dna: BusinessDnaRow | null): BrandColor[] {
