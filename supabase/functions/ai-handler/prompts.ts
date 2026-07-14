@@ -104,12 +104,18 @@ export function postSystemPrompt(target: PostTarget) {
   return [postStructures[target], postJsonShape, visualConceptRule, languageRule, groundingRule, researchRule, noInventedFacts].join(' ');
 }
 
-export function videoSystemPrompt() {
+export function videoSystemPrompt(creativeDirection = '') {
   return [
     'You are the time2grow Video Script Writer. Create a scene-by-scene ad/video script from Business DNA and the user brief.',
     'Reply with strict JSON only, no prose, matching this exact shape: {"title":string,"duration":string,"language":string,"concept":string,"characters":[{"name":string,"role":string,"description":string}],"scenes":[{"sceneNumber":number,"time":string,"heading":string,"visual":string,"screenplay":string,"dialogue":[{"character":string,"line":string}],"voiceOver":string,"screenText":string,"shotNotes":string}],"finalVoiceOver":string,"caption":string,"hashtags":[string],"whyItWorks":string}',
     'Scene time ranges use M:SS-M:SS, run in order with no gaps and no overlaps, and start at 0:00. Treat the requested duration as a maximum, not a target: the last scene must end at or before it. Let the story decide the real length, and prefer a tight, complete script over padding scenes to fill the time.',
     'Every dialogue line must be attributed to a character listed in characters, and must be short enough to be spoken inside its scene timing.',
+    'Creative standard: never default to an old-school presenter listing benefits, a generic problem-solution testimonial, or a brand reveal pasted onto the final scene. Open with a visual or dialogue pattern-interrupt in the first 2 seconds, build one relatable human tension or curiosity gap, and make the product or brand change what happens inside the story.',
+    'Each script receives one creativeDirection. Commit to that device from the opening shot through the payoff. Make the scene mechanics, character behavior, visual grammar, dialogue rhythm, hook, and ending specific to that direction rather than merely naming the style in concept.',
+    creativeDirection ? `Mandatory creative direction for this run: ${creativeDirection}` : 'Use the creative direction supplied in the user request.',
+    'Cinematic homage rule: you may evoke a broad movie genre or scene archetype such as a mass-entry reveal, courtroom reversal, heist briefing, family dinner tension, detective interrogation, or sports comeback, but all characters, situations, staging, and dialogue must be original. Never quote or closely paraphrase a famous movie line, use a film title or protected character as the selling device, or recreate a recognisable scene beat-for-beat.',
+    'Mini-jingle rule: when the creative direction is a mini-musical or jingle, write exactly 4 to 6 short ORIGINAL lyric lines that name or naturally connect to the product. Put the lyric lines in dialogue or voiceOver and describe rhythm, performance, and transitions in screenplay/shotNotes. Never reuse or imitate an existing song, lyric, melody, or signature tune.',
+    'Avoid stock ad language, empty superlatives, lecture-like dialogue, and predictable lines such as announcing that a solution has arrived. Use subtext, interruption, contrast, misdirection, callbacks, visual comedy, sound design, or an emotional turn where suitable. Give the final scene a memorable payoff rather than only a logo-and-CTA ending.',
     'Hashtags carry no leading "#".',
     languageRule,
     'For Telugu, use natural spoken Telugu for dialogue rather than literal translation.',
@@ -150,6 +156,7 @@ export function viralitySystemPrompt(kind: 'post' | 'video', threshold: number) 
     `Reply with strict JSON only, no prose, matching this exact shape: {"score":number,"pillars":[{"name":string,"score":number,"note":string}],"summary":string,"revised":${revisedShape}|null}. Include exactly the five pillars named above, each with a one-line "note", and a one-line overall "summary". The "score" is the honest score of the content you were given.`,
     `If the given content already scores ${threshold} or higher, set "revised" to null. If it scores below ${threshold}, rewrite it to lift the weakest pillars above ${threshold} and put the improved version in "revised" using the exact shape above.`,
     'When you revise, keep the same language, the same length or duration, the same offer and facts, and every scene timing rule. Change wording, hook, and structure to raise virality — never invent discounts, prices, phone numbers, addresses, guarantees, awards, or testimonials.',
+    kind === 'video' ? 'For video revisions, preserve the chosen cinematic, comedy, story, or mini-jingle device. Do not flatten an original concept into a generic presenter, testimonial, feature list, or routine problem-solution ad. Keep movie-inspired material fully original and keep every jingle lyric original.' : '',
     'Accuracy and grounding gate: cap the overall score at 60 if the content invents any specific fact not supported by the brief or Business DNA, or drifts into generic marketing that is not about the exact subject of the brief. High virality never justifies a fabricated or off-context claim, and any revision must obey this same gate.',
     'Judge and revise the content in whatever language it is written; do not penalise it for not being in English.',
   ].join(' ');

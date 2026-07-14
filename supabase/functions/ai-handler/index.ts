@@ -62,6 +62,11 @@ type ScriptScene = {
   shotNotes: string;
 };
 
+type CreativeDirection = {
+  id: string;
+  label: string;
+  instruction: string;
+};
 type PosterFormat = 'square' | 'portrait' | 'landscape' | 'story' | 'youtube';
 type PosterQuality = 'medium' | 'high';
 type PosterTemplateId = 'signature' | 'spotlight' | 'premium' | 'editorial' | 'bold' | 'educational';
@@ -79,6 +84,22 @@ const DEFAULT_MAX_LOGO_BYTES = 2_000_000;
 const MAX_REDIRECTS = 3;
 const MAX_STYLESHEET_FETCHES = 4;
 const supportedLogoMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const videoCreativeDirections: CreativeDirection[] = [
+  { id: 'mass-entry-reveal', label: 'Cinematic mass-entry reveal', instruction: 'Stage an original mass-entry-style reveal around an everyday person or product. Build anticipation through reactions, sound, and partial visual clues, then land an unexpected useful payoff. Use no film title, actor imitation, protected character, or famous dialogue.' },
+  { id: 'courtroom-reversal', label: 'Courtroom reversal', instruction: 'Turn the customer problem into a playful original courtroom scene. Evidence, objections, and a final reversal should reveal the product benefit through action rather than a lecture. All dialogue and characters must be original.' },
+  { id: 'heist-briefing', label: 'Heist briefing', instruction: 'Treat the goal as a clever heist briefing with maps, roles, ticking-clock energy, and a comic reveal that the product is the essential tool. Keep the plan grounded in the real brief and fully original.' },
+  { id: 'mini-jingle', label: 'Original mini-jingle', instruction: 'Create a mini-musical ad with exactly 4 to 6 short original lyric lines. Let normal dialogue or a visual problem flow naturally into the song, use a catchy internal rhyme or rhythmic callback, and finish with a visual punchline. Do not reference or imitate an existing song or tune.' },
+  { id: 'comedy-misunderstanding', label: 'Comedy misunderstanding', instruction: 'Open on a believable misunderstanding that escalates through quick reaction shots and natural conversational comedy. Let the product resolve the confusion in a surprising way, then call back the opening line in the payoff.' },
+  { id: 'slice-of-life-interruption', label: 'Slice-of-life interruption', instruction: 'Begin inside a highly specific everyday local moment, then interrupt the routine with one strange visual or unexpected line. Keep performances natural and make the product part of the human interaction, not an announcer insert.' },
+  { id: 'mock-breaking-news', label: 'Mock breaking news', instruction: 'Present the customer problem as an original mock breaking-news report with a field reporter, eyewitness, and escalating visual evidence. Reveal the product as the practical resolution and end on a dry news-style sign-off.' },
+  { id: 'reverse-story', label: 'Reverse-story reveal', instruction: 'Open with the satisfying final result, then rewind through three fast clues to reveal how the product made it happen. The reverse structure must create curiosity and end by reframing the opening shot.' },
+  { id: 'suspense-mystery', label: 'Suspense mystery', instruction: 'Treat the missing benefit or recurring problem as a compact mystery. Use sound cues, close-ups, false clues, and an original detective-like exchange before a simple product reveal solves it.' },
+  { id: 'one-take-chain-reaction', label: 'One-take chain reaction', instruction: 'Design the ad as one apparent continuous take where one action triggers the next across people or spaces. Dialogue stays minimal; blocking, props, sound, and a final visual transformation carry the story.' },
+  { id: 'folk-tale-remix', label: 'Modern folk-tale remix', instruction: 'Use the rhythm of a local folk tale, village anecdote, or grandparent story but invent the characters and events. Contrast an old assumption with a modern product-enabled twist, keeping the language warm and contemporary.' },
+  { id: 'split-screen-rivalry', label: 'Split-screen rivalry', instruction: 'Run two contrasting approaches side by side as a playful rivalry. Use matching compositions, visual callbacks, and short competitive dialogue until one decisive product-enabled moment breaks the symmetry.' },
+  { id: 'emotional-callback', label: 'Emotional callback', instruction: 'Plant one small object, promise, or line in the first scene and bring it back with new emotional meaning in the final scene. Keep sentiment restrained, specific, and earned; the product should enable the payoff.' },
+  { id: 'mock-documentary', label: 'Mock documentary', instruction: 'Shoot the ad like a deadpan mini-documentary with candid interviews, observational cutaways, and one absurd but believable recurring detail. Let the product benefit emerge from what viewers observe.' },
+];
 const postTargets: ContentTarget[] = ['linkedin', 'blog', 'community'];
 const posterTemplateIds: PosterTemplateId[] = ['signature', 'spotlight', 'premium', 'editorial', 'bold', 'educational'];
 const posterSizes: Record<PosterFormat, string> = {
@@ -189,6 +210,26 @@ async function extractDna({ supabase, orgId, userId, payload }: ActionContext) {
 
   return { dna: logo ? { ...dna, logo } : dna };
 }
+function pickVideoCreativeDirection(topic: string, previousId: string) {
+  const normalized = topic.toLowerCase();
+  let candidates = videoCreativeDirections;
+
+  if (/(jingle|mini[- ]?song|ad song|\bsong\b|musical|పాట|గీతం)/iu.test(normalized)) {
+    candidates = videoCreativeDirections.filter((direction) => direction.id === 'mini-jingle');
+  } else if (/(court|courtroom|కోర్టు)/iu.test(normalized)) {
+    candidates = videoCreativeDirections.filter((direction) => direction.id === 'courtroom-reversal');
+  } else if (/(heist|mission briefing|దొంగతనం)/iu.test(normalized)) {
+    candidates = videoCreativeDirections.filter((direction) => direction.id === 'heist-briefing');
+  } else if (/(movie|cinema|film|famous dialogue|recreate.+scene|సినిమా|డైలాగ్|సీన్)/iu.test(normalized)) {
+    const cinematicIds = new Set(['mass-entry-reveal', 'courtroom-reversal', 'heist-briefing', 'suspense-mystery']);
+    candidates = videoCreativeDirections.filter((direction) => cinematicIds.has(direction.id));
+  }
+
+  const freshCandidates = candidates.filter((direction) => direction.id !== previousId);
+  const pool = freshCandidates.length > 0 ? freshCandidates : candidates;
+  const random = crypto.getRandomValues(new Uint32Array(1))[0];
+  return pool[random % pool.length] ?? videoCreativeDirections[0];
+}
 async function generateContent({ supabase, orgId, payload }: ActionContext) {
   const topic = limitedString(payload.topic, 1000);
   if (!topic) throw new HttpError(400, 'Enter a content brief.');
@@ -199,6 +240,7 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
   const callToAction = limitedString(payload.callToAction, 160);
   const audience = limitedString(payload.audience, 300);
   const keywords = limitedString(payload.keywords, 300);
+  const previousCreativeDirection = limitedString(payload.previousCreativeDirection, 80);
   const businessDna = await loadBusinessDna(supabase, orgId);
 
   if (!businessDna) {
@@ -209,8 +251,10 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
     const scriptLanguage = enumString<ContentLanguage>(payload.scriptLanguage, ['te', 'en', 'te-en', 'hi', 'hi-en', 'kn', 'kn-en'], 'te-en');
     const scriptDuration = enumString<ScriptDuration>(payload.scriptDuration, ['15', '30', '45', '60', '90'], '30');
     const scriptType = limitedString(payload.scriptType, 120) || 'direct ad';
+    const creativeDirection = pickVideoCreativeDirection(topic, previousCreativeDirection);
+    const noveltySeed = crypto.randomUUID();
     const completion = await callOpenAi([
-      { role: 'system', content: videoSystemPrompt() },
+      { role: 'system', content: videoSystemPrompt(creativeDirection.instruction) },
       {
         role: 'user',
         content: JSON.stringify({
@@ -224,6 +268,8 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
             scriptLanguage,
             scriptDurationSeconds: scriptDuration,
             scriptType,
+            creativeDirection: { id: creativeDirection.id, label: creativeDirection.label },
+            noveltySeed,
           },
           requirement: `The script may run up to ${scriptDuration} seconds and must not exceed it. The last scene must end at or before ${formatSceneClock(Number(scriptDuration))}. A shorter script is fine when the story is already complete.`,
           businessDna: summarizeBusinessDna(businessDna),
@@ -238,7 +284,7 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
       (raw) => parseVideoCompletion(JSON.stringify(raw), topic, scriptLanguage, scriptDuration),
       scriptMaxTokens(scriptDuration, scriptLanguage),
     );
-    return { content: scored };
+    return { content: { ...scored, creativeDirection: creativeDirection.id, creativeDirectionLabel: creativeDirection.label } };
   }
 
   const postTarget = enumString<PostTarget>(payload.postTarget, ['linkedin', 'blog', 'community'], 'linkedin');

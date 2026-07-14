@@ -74,10 +74,14 @@ Deno.test('every post prompt carries the grounding, research, and no-invent guar
 });
 
 Deno.test('video prompt keeps the scene schema, tiling rule, and grounding', () => {
-  const v = videoSystemPrompt();
+  const v = videoSystemPrompt('Create an original four-line mini-jingle.');
   assert(v.includes('"scenes"'), 'has scenes schema');
   assert(v.includes('no gaps'), 'requires gap-free scene timing');
   assert(v.includes('Ground every sentence'), 'has grounding rule');
+  assert(v.includes('pattern-interrupt'), 'requires a modern opening device');
+  assert(v.includes('4 to 6 short ORIGINAL lyric lines'), 'requires original mini-jingle lyrics');
+  assert(v.includes('Never quote or closely paraphrase a famous movie line'), 'protects movie dialogue while allowing homage');
+  assert(v.includes('Create an original four-line mini-jingle.'), 'injects the selected creative direction');
 });
 
 Deno.test('virality prompt gates on the threshold and can revise', () => {
@@ -89,6 +93,7 @@ Deno.test('virality prompt gates on the threshold and can revise', () => {
   assert(s.includes('cap the overall score at 60'), 'keeps the fabrication/off-context cap');
   // The video variant must carry the scene schema in its revised shape so a revised script re-parses.
   assert(viralitySystemPrompt('video', 75).includes('"scenes"'), 'video revise shape has scenes');
+  assert(viralitySystemPrompt('video', 75).includes('Do not flatten'), 'video revision preserves its creative device');
 });
 
 Deno.test('visual prompt prefers Visual Value and forbids baked-in text', () => {

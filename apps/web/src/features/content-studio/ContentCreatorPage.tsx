@@ -85,6 +85,8 @@ type GeneratedScript = {
   duration: string;
   language: string;
   concept: string;
+  creativeDirection: string;
+  creativeDirectionLabel: string;
   characters: ScriptCharacter[];
   scenes: ScriptScene[];
   finalVoiceOver: string;
@@ -351,6 +353,7 @@ export function ContentCreatorPage() {
           callToAction: form.callToAction,
           audience: form.audience,
           keywords: form.keywords,
+          previousCreativeDirection: readPreviousCreativeDirection(organization.id),
         },
       });
 
@@ -358,6 +361,8 @@ export function ContentCreatorPage() {
 
       const content = normalizeGeneratedContent(data?.content);
       if (!content) throw new Error('AI did not return usable content.');
+
+      if (content.kind === 'video') rememberCreativeDirection(organization.id, content.creativeDirection);
 
       resetDraft();
       setGenerated(content);
@@ -1029,6 +1034,7 @@ function ScriptView({ script }: { script: GeneratedScript }) {
       <div className="script-meta">
         {script.duration ? <span>{script.duration}</span> : null}
         {script.language ? <span>{languageLabel(script.language)}</span> : null}
+        {script.creativeDirectionLabel ? <span>{script.creativeDirectionLabel}</span> : null}
       </div>
 
       {script.concept ? <p className="script-concept">{script.concept}</p> : null}
@@ -1239,6 +1245,8 @@ function normalizeScript(record: Record<string, unknown>): GeneratedScript | nul
     duration: stringValue(record.duration),
     language: stringValue(record.language),
     concept,
+    creativeDirection: stringValue(record.creativeDirection),
+    creativeDirectionLabel: stringValue(record.creativeDirectionLabel),
     characters: Array.isArray(record.characters)
       ? record.characters.map(normalizeCharacter).filter((character): character is ScriptCharacter => Boolean(character))
       : [],
@@ -1340,6 +1348,26 @@ function targetLabel(target: PostTarget) {
   return postTargets.find((item) => item.value === target)?.label ?? target;
 }
 
+function creativeDirectionMemoryKey(orgId: string) {
+  return `time2grow.content.lastCreativeDirection.${orgId}`;
+}
+
+function readPreviousCreativeDirection(orgId: string) {
+  try {
+    return window.localStorage.getItem(creativeDirectionMemoryKey(orgId)) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberCreativeDirection(orgId: string, direction: string) {
+  if (!direction) return;
+  try {
+    window.localStorage.setItem(creativeDirectionMemoryKey(orgId), direction);
+  } catch {
+    // Generation still works when storage is disabled or unavailable.
+  }
+}
 function safeFileName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70) || 'post-visual';
 }
