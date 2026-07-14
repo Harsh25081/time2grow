@@ -38,6 +38,12 @@ function getDisplayName(user: User) {
   return user.email?.split('@')[0] ?? 'Creator';
 }
 
+// Account type chosen at sign-up. 'agency' unlocks per-client Business DNA;
+// anything else falls back to the single-workspace 'solo' default.
+function getOrgTypeFromMetadata(user: User): 'solo' | 'agency' {
+  return user.user_metadata?.account_type === 'agency' ? 'agency' : 'solo';
+}
+
 async function bootstrapUser(user: User): Promise<BootstrapState> {
   if (!supabase) {
     return emptyBootstrap;
@@ -80,7 +86,7 @@ async function bootstrapUser(user: User): Promise<BootstrapState> {
       .from('organizations')
       .insert({
         name: `${displayName}'s Workspace`,
-        org_type: 'solo',
+        org_type: getOrgTypeFromMetadata(user),
         plan_key: 'free',
         created_by: user.id,
       })

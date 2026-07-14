@@ -9,6 +9,8 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "preview:web": "npm --workspace apps/web run preview",
-    "typecheck:web": "npm --workspace apps/web run typecheck"
+    "typecheck:web": "npm --workspace apps/web run typecheck",
+    "test:functions": "deno test supabase/functions/ai-handler/",
+    "check:functions": "deno check supabase/functions/ai-handler/index.ts"
   }
 }

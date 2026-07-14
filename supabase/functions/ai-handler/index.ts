@@ -8,6 +8,21 @@ import {
   requiredEnv,
   serviceClient,
 } from '../_shared/youtube.ts';
+import {
+  noTextInImageClause,
+  postMaxTokens,
+  postSystemPrompt,
+  postVisualSystemPrompt,
+  postWordRange,
+  scriptMaxTokens,
+  videoSystemPrompt,
+  viralitySystemPrompt,
+  VIRALITY_THRESHOLD,
+  type ContentLanguage,
+  type PostLength,
+  type PostTarget,
+  type ScriptDuration,
+} from './prompts.ts';
 
 type ServiceClient = ReturnType<typeof serviceClient>;
 
@@ -25,7 +40,27 @@ type ColorEntry = { label: string; value: string };
 type WebsiteLogoCandidate = { url: URL; label: string; score: number; order: number };
 
 type ContentTarget = 'linkedin' | 'blog' | 'community' | 'video_script';
-type ContentVariant = { target: ContentTarget; title: string; body: string };
+type PostVariant = {
+  target: PostTarget;
+  title: string;
+  body: string;
+  cta: string;
+  hashtags: string[];
+  visualConcept: string;
+};
+type ScriptCharacter = { name: string; role: string; description: string };
+type ScriptDialogueLine = { character: string; line: string };
+type ScriptScene = {
+  sceneNumber: number;
+  time: string;
+  heading: string;
+  visual: string;
+  screenplay: string;
+  dialogue: ScriptDialogueLine[];
+  voiceOver: string;
+  screenText: string;
+  shotNotes: string;
+};
 
 type PosterFormat = 'square' | 'portrait' | 'landscape' | 'story' | 'youtube';
 type PosterQuality = 'medium' | 'high';
@@ -36,7 +71,8 @@ const DEFAULT_DAILY_ORG_CALL_CAP = 40;
 const DEFAULT_MAX_WEBSITE_BYTES = 512_000;
 const DEFAULT_MAX_WEBSITE_TEXT_CHARS = 6000;
 const DEFAULT_WEBSITE_FETCH_TIMEOUT_MS = 10_000;
-const DEFAULT_OPENAI_TIMEOUT_MS = 25_000;
+// A 90-second Telugu script is ~9000 output tokens and cannot finish inside 25 seconds.
+const DEFAULT_OPENAI_TIMEOUT_MS = 60_000;
 const DEFAULT_OPENAI_IMAGE_TIMEOUT_MS = 90_000;
 const DEFAULT_MAX_STYLESHEET_BYTES = 150_000;
 const DEFAULT_MAX_LOGO_BYTES = 2_000_000;
@@ -44,7 +80,6 @@ const MAX_REDIRECTS = 3;
 const MAX_STYLESHEET_FETCHES = 4;
 const supportedLogoMimeTypes = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 const postTargets: ContentTarget[] = ['linkedin', 'blog', 'community'];
-const contentTargets: ContentTarget[] = [...postTargets, 'video_script'];
 const posterTemplateIds: PosterTemplateId[] = ['signature', 'spotlight', 'premium', 'editorial', 'bold', 'educational'];
 const posterSizes: Record<PosterFormat, string> = {
   square: '1024x1024',
@@ -57,6 +92,7 @@ const posterSizes: Record<PosterFormat, string> = {
 const actions: Record<string, ActionHandler> = {
   extract_dna: extractDna,
   generate_content: generateContent,
+  generate_post_visual: generatePostVisual,
   generate_poster_concepts: generatePosterConcepts,
   generate_poster: generatePoster,
   generate_poster_art: generatePosterArt,
@@ -66,14 +102,18 @@ Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
 
+  const startedAt = Date.now();
+  let action = '';
+  let orgId = '';
+
   try {
     if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405);
 
     const supabase = serviceClient();
     const user = await getAuthenticatedUser(req, supabase);
     const body = await req.json().catch(() => ({}));
-    const action = typeof body.action === 'string' ? body.action : '';
-    const orgId = typeof body.orgId === 'string' ? body.orgId : '';
+    action = typeof body.action === 'string' ? body.action : '';
+    orgId = typeof body.orgId === 'string' ? body.orgId : '';
 
     if (!action) return jsonResponse({ error: 'Missing action.' }, 400);
     if (!orgId) return jsonResponse({ error: 'Missing orgId.' }, 400);
@@ -87,8 +127,14 @@ Deno.serve(async (req) => {
 
     const result = await handler({ supabase, orgId, userId: user.id, payload: body });
 
+    // Structured success line so latency per action is visible in the Supabase function logs.
+    console.log(JSON.stringify({ level: 'info', action, orgId, ms: Date.now() - startedAt }));
     return jsonResponse(result);
   } catch (error) {
+    const status = error instanceof HttpError ? error.status : 500;
+    const message = error instanceof Error ? error.message : String(error);
+    // Structured error line for monitoring/alerting (grep level=error, or forward to Sentry later).
+    console.error(JSON.stringify({ level: 'error', action, orgId, status, message, ms: Date.now() - startedAt }));
     return errorResponse(error);
   }
 });
@@ -151,6 +197,8 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
   const tone = limitedString(payload.tone, 120) || 'clear and useful';
   const offer = limitedString(payload.offer, 300);
   const callToAction = limitedString(payload.callToAction, 160);
+  const audience = limitedString(payload.audience, 300);
+  const keywords = limitedString(payload.keywords, 300);
   const businessDna = await loadBusinessDna(supabase, orgId);
 
   if (!businessDna) {
@@ -158,15 +206,11 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
   }
 
   if (contentType === 'video') {
-    const scriptLanguage = enumString(payload.scriptLanguage, ['te', 'en', 'te-en'], 'te-en');
-    const scriptDuration = enumString(payload.scriptDuration, ['15', '30', '45', '60'], '30');
+    const scriptLanguage = enumString<ContentLanguage>(payload.scriptLanguage, ['te', 'en', 'te-en', 'hi', 'hi-en', 'kn', 'kn-en'], 'te-en');
+    const scriptDuration = enumString<ScriptDuration>(payload.scriptDuration, ['15', '30', '45', '60', '90'], '30');
     const scriptType = limitedString(payload.scriptType, 120) || 'direct ad';
     const completion = await callOpenAi([
-      {
-        role: 'system',
-        content:
-          'You are the time2grow Video Script Writer. Create a scene-by-scene ad/video script from Business DNA and the user brief. Reply with strict JSON only, no prose, matching this exact shape: {"title":string,"summary":string,"variants":[{"target":"video_script","title":string,"body":string}]}. The body must be publish-ready script text with: duration, language, concept, character names and roles, scene-by-scene timing, visual direction, screenplay/action, character dialogue, voice-over, screen text, shot notes, final voice-over, caption, hashtags, CTA, and why it works. For Telugu, use natural Telugu script unless the request asks for transliteration. Do not invent discounts, prices, phone numbers, guarantees, awards, testimonials, addresses, app availability, or legal claims.',
-      },
+      { role: 'system', content: videoSystemPrompt() },
       {
         role: 'user',
         content: JSON.stringify({
@@ -175,37 +219,39 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
             tone,
             offer,
             callToAction,
+            audience,
+            keywords,
             scriptLanguage,
             scriptDurationSeconds: scriptDuration,
             scriptType,
           },
+          requirement: `The script may run up to ${scriptDuration} seconds and must not exceed it. The last scene must end at or before ${formatSceneClock(Number(scriptDuration))}. A shorter script is fine when the story is already complete.`,
           businessDna: summarizeBusinessDna(businessDna),
-          requiredBodyFormat: [
-            'Title and duration',
-            'Characters with names and roles',
-            'Scene 1 - 0:00-0:04 - heading',
-            'Visual direction',
-            'Screenplay/action',
-            'Dialogue with character names',
-            'Voice-over',
-            'Screen text',
-            'Shot notes',
-            'Final voice-over, caption, hashtags, CTA, why it works',
-          ],
         }),
       },
-    ], 2200);
+    ], scriptMaxTokens(scriptDuration, scriptLanguage));
 
-    return { content: parseContentCompletion(completion, ['video_script'], topic) };
+    const script = parseVideoCompletion(completion, topic, scriptLanguage, scriptDuration);
+    const scored = await scoreAndGateContent(
+      'video',
+      script,
+      (raw) => parseVideoCompletion(JSON.stringify(raw), topic, scriptLanguage, scriptDuration),
+      scriptMaxTokens(scriptDuration, scriptLanguage),
+    );
+    return { content: scored };
   }
 
-  const postTarget = enumString(payload.postTarget, ['linkedin', 'blog', 'community'], 'linkedin');
+  const postTarget = enumString<PostTarget>(payload.postTarget, ['linkedin', 'blog', 'community'], 'linkedin');
+  const language = enumString<ContentLanguage>(payload.language, ['te', 'en', 'te-en', 'hi', 'hi-en', 'kn', 'kn-en'], 'en');
+  const length = enumString<PostLength>(payload.length, ['short', 'standard', 'long'], 'standard');
+  const range = postWordRange(postTarget, length);
+
+  // Fetch real pages (the business website + any URLs pasted in the brief) so the model can cite
+  // real links and real data instead of inventing them. Failures are skipped, not fatal.
+  const sources = await gatherPostSources(limitedString(businessDna.website_url, 300), topic);
+
   const completion = await callOpenAi([
-    {
-      role: 'system',
-      content:
-        'You are the time2grow Post Writer. Create platform-ready posts from Business DNA and the user brief. Reply with strict JSON only, no prose, matching this exact shape: {"title":string,"summary":string,"variants":[{"target":"linkedin|blog|community","title":string,"body":string}]}. Return exactly one variant for the requested target. For LinkedIn, write a sharp professional post with hook, short paragraphs, insight, CTA, and 3-5 hashtags. For blog, write a structured blog draft with title, intro, headings, useful sections, and CTA. For community, write a friendly conversational group post. Use English, Telugu, or Telugu-English as requested. Do not invent statistics, offers, legal claims, guarantees, testimonials, discounts, contact details, or addresses.',
-    },
+    { role: 'system', content: postSystemPrompt(postTarget) },
     {
       role: 'user',
       content: JSON.stringify({
@@ -215,13 +261,248 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
           tone,
           offer,
           callToAction,
+          audience,
+          keywords,
+          language,
         },
+        requirement: `The body must be between ${range.min} and ${range.max} words. This is a hard requirement, not a target.`,
         businessDna: summarizeBusinessDna(businessDna),
+        fetchedSources: sources.map((source) => ({ url: source.url, excerpt: source.excerpt })),
       }),
     },
-  ], postTarget === 'blog' ? 2200 : 1400);
+  ], postMaxTokens(postTarget, length, language));
 
-  return { content: parseContentCompletion(completion, [postTarget], topic) };
+  const post = parsePostCompletion(completion, postTarget, topic);
+  const scored = await scoreAndGateContent(
+    'post',
+    post,
+    (raw) => parsePostCompletion(JSON.stringify(raw), postTarget, topic),
+    postMaxTokens(postTarget, length, language),
+  );
+  return { content: { ...scored, sources: sources.map((source) => ({ url: source.url })) } };
+}
+
+/**
+ * Collects real, fetchable sources for a post: the business website plus any http(s) URLs pasted
+ * into the brief. Each is validated (SSRF-guarded) and fetched in parallel; individual failures are
+ * dropped so a bad link never fails the whole generation. Capped at 3 to bound latency.
+ */
+async function gatherPostSources(websiteUrl: string, brief: string) {
+  const candidates: string[] = [];
+  if (websiteUrl) candidates.push(websiteUrl);
+  for (const match of brief.matchAll(/https?:\/\/[^\s<>()"']+/gi)) {
+    candidates.push(match[0].replace(/[.,)]+$/, ''));
+  }
+
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const candidate of candidates) {
+    const key = candidate.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+    if (unique.length >= 3) break;
+  }
+
+  const results = await Promise.all(unique.map(async (raw) => {
+    try {
+      const url = parseHttpUrl(raw);
+      const site = await fetchSiteContext(url);
+      const excerpt = site.text.trim();
+      if (!excerpt) return null;
+      return { url: url.toString(), excerpt: excerpt.slice(0, 1500) };
+    } catch {
+      return null;
+    }
+  }));
+
+  return results.filter((source): source is { url: string; excerpt: string } => Boolean(source));
+}
+
+type ViralityResult = {
+  score: number;
+  pillars: Array<{ name: string; score: number; note: string }>;
+  summary: string;
+  revisions: number;
+  passed: boolean;
+  threshold: number;
+};
+
+function viralityMin() {
+  return numberEnv('AI_VIRALITY_MIN', VIRALITY_THRESHOLD, 0, 100);
+}
+
+function viralityMaxRevisions() {
+  return numberEnv('AI_VIRALITY_MAX_REVISIONS', 2, 0, 4);
+}
+
+/**
+ * Scores a draft on the virality rubric and enforces a minimum: while the draft scores below the
+ * threshold, it adopts the model's revision and re-scores, up to a bounded number of passes. Returns
+ * the highest-scoring attempt with its `virality` result. A failed/unreadable scoring pass or an
+ * unparseable revision stops the loop and keeps the best content so far — the request never crashes
+ * over a bad scoring call, and the caller always gets usable content (with `passed` telling the UI
+ * whether it cleared the bar).
+ */
+async function scoreAndGateContent<T extends Record<string, unknown>>(
+  kind: 'post' | 'video',
+  initial: T,
+  reparse: (raw: Record<string, unknown>) => T,
+  maxTokens: number,
+): Promise<T & { virality: ViralityResult }> {
+  const threshold = viralityMin();
+  const maxRevisions = viralityMaxRevisions();
+
+  let current = initial;
+  let best: { content: T; virality: ViralityResult } | null = null;
+
+  for (let attempt = 0; attempt <= maxRevisions; attempt += 1) {
+    let graded: { score: number; pillars: ViralityResult['pillars']; summary: string; revised: Record<string, unknown> | null } | null = null;
+    try {
+      const completion = await callModel([
+        { role: 'system', content: viralitySystemPrompt(kind, threshold) },
+        { role: 'user', content: JSON.stringify(current) },
+      ], maxTokens, 'scoring');
+      graded = parseViralityCompletion(completion);
+    } catch {
+      graded = null;
+    }
+
+    if (!graded) break;
+
+    const virality: ViralityResult = {
+      score: graded.score,
+      pillars: graded.pillars,
+      summary: graded.summary,
+      revisions: attempt,
+      passed: graded.score >= threshold,
+      threshold,
+    };
+
+    // Keep the highest-scoring attempt seen so far as the fallback if nothing clears the bar.
+    if (!best || virality.score > best.virality.score) best = { content: current, virality };
+
+    if (virality.passed) break;
+    if (!graded.revised) break;
+
+    // Adopt the revision only if it survives the normal parser; otherwise keep the best so far.
+    try {
+      current = reparse(graded.revised);
+    } catch {
+      break;
+    }
+  }
+
+  if (!best) {
+    // Scoring never produced a usable result; return the original draft with an honest zero score.
+    return { ...initial, virality: { score: 0, pillars: [], summary: '', revisions: 0, passed: false, threshold } };
+  }
+  return { ...best.content, virality: best.virality };
+}
+
+function parseViralityCompletion(raw: string) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  const pillars = Array.isArray(parsed.pillars)
+    ? parsed.pillars
+        .map((pillar) => {
+          if (!pillar || typeof pillar !== 'object') return null;
+          const record = pillar as Record<string, unknown>;
+          const name = limitedString(record.name, 60);
+          if (!name) return null;
+          return { name, score: clampScore(record.score), note: limitedString(record.note, 240) };
+        })
+        .filter((pillar): pillar is ViralityResult['pillars'][number] => Boolean(pillar))
+        .slice(0, 8)
+    : [];
+
+  const revised = parsed.revised && typeof parsed.revised === 'object' && !Array.isArray(parsed.revised)
+    ? parsed.revised as Record<string, unknown>
+    : null;
+
+  return {
+    score: clampScore(parsed.score),
+    pillars,
+    summary: limitedString(parsed.summary, 400),
+    revised,
+  };
+}
+
+function clampScore(value: unknown) {
+  const num = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(num)) return 0;
+  return Math.min(100, Math.max(0, Math.round(num)));
+}
+
+async function generatePostVisual({ supabase, orgId, payload }: ActionContext) {
+  const topic = limitedString(payload.topic, 700);
+  const postBody = limitedString(payload.postBody, 2000);
+  if (!topic && !postBody) throw new HttpError(400, 'Generate a post before creating its visual.');
+
+  const target = enumString<PostTarget>(payload.target, ['linkedin', 'blog', 'community'], 'linkedin');
+  const visualConcept = limitedString(payload.visualConcept, 400);
+  const tone = limitedString(payload.tone, 120);
+  const audience = limitedString(payload.audience, 300);
+  const businessDna = await loadBusinessDna(supabase, orgId);
+
+  if (!businessDna) {
+    throw new HttpError(400, 'Save Business DNA before creating a post visual.');
+  }
+
+  const summary = summarizeBusinessDna(businessDna);
+  const brandColors = Array.isArray(summary.brandColors)
+    ? summary.brandColors.map((color) => color.value).filter(Boolean).slice(0, 4)
+    : [];
+
+  const completion = await callModel([
+    { role: 'system', content: postVisualSystemPrompt() },
+    {
+      role: 'user',
+      content: JSON.stringify({ brief: topic, postBody, visualConcept, target, tone, audience, brandColors, businessDna: summary }),
+    },
+  ], 700, 'visual');
+
+  const imagePrompt = parsePostVisualCompletion(completion);
+  // Blog art sits above an article, so it wants a header crop; feed posts want a square.
+  const format: PosterFormat = target === 'blog' ? 'landscape' : 'square';
+  const size = posterSizes[format];
+  const image = await generatePosterImage(imagePrompt, { size, quality: 'high' });
+
+  return {
+    visual: {
+      imageDataUrl: `data:image/png;base64,${image.b64Json}`,
+      imagePrompt,
+      size,
+      format,
+    },
+  };
+}
+
+function parsePostVisualCompletion(raw: string) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const imagePrompt = stringField(parsed.imagePrompt).trim();
+  if (!imagePrompt) throw new HttpError(502, 'The AI did not return an art prompt. Try again.');
+
+  // The model drops the clause often enough that appending it is cheaper than a retry.
+  const withClause = imagePrompt.includes(noTextInImageClause) ? imagePrompt : `${imagePrompt} ${noTextInImageClause}`;
+  return withClause.slice(0, 2000);
+}
+
+function formatSceneClock(totalSeconds: number) {
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 async function generatePosterConcepts({ supabase, orgId, payload }: ActionContext) {
   const topic = limitedString(payload.topic, 700);
@@ -470,13 +751,50 @@ async function fetchSiteContext(url: URL) {
   throw new HttpError(400, 'That website redirected too many times.');
 }
 
-async function callOpenAi(messages: Array<{ role: string; content: string }>, maxTokens = 900) {
-  const apiKey = requiredEnv('OPENAI_API_KEY');
-  const model = Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini';
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), openAiTimeoutMs());
+// Which text calls each purpose maps to. Provider + model are chosen per purpose from env so a cheap
+// model (e.g. DeepSeek) can be routed to the mechanical calls (scoring, visual art-prompt) while the
+// quality-critical generation stays on the proven model. Everything defaults to OpenAI, so DeepSeek
+// is strictly opt-in and never touches Indic content generation unless explicitly configured.
+type ModelPurpose = 'generation' | 'scoring' | 'visual';
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+type ModelProvider = 'openai' | 'deepseek';
+
+function providerForPurpose(purpose: ModelPurpose): ModelProvider {
+  const perPurpose = Deno.env.get(`AI_PROVIDER_${purpose.toUpperCase()}`);
+  const fallback = Deno.env.get('AI_PROVIDER') || 'openai';
+  const chosen = (perPurpose || fallback).toLowerCase();
+  return chosen === 'deepseek' ? 'deepseek' : 'openai';
+}
+
+function providerConfig(provider: ModelProvider, purpose: ModelPurpose) {
+  if (provider === 'deepseek') {
+    return {
+      apiKey: requiredEnv('DEEPSEEK_API_KEY'),
+      endpoint: (Deno.env.get('DEEPSEEK_BASE_URL') || 'https://api.deepseek.com') + '/v1/chat/completions',
+      model: Deno.env.get(`DEEPSEEK_MODEL_${purpose.toUpperCase()}`) || Deno.env.get('DEEPSEEK_MODEL') || 'deepseek-chat',
+    };
+  }
+  return {
+    apiKey: requiredEnv('OPENAI_API_KEY'),
+    endpoint: 'https://api.openai.com/v1/chat/completions',
+    model: Deno.env.get(`OPENAI_MODEL_${purpose.toUpperCase()}`) || Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini',
+  };
+}
+
+function callOpenAi(messages: Array<{ role: string; content: string }>, maxTokens = 900) {
+  return callModel(messages, maxTokens, 'generation');
+}
+
+async function callModel(messages: Array<{ role: string; content: string }>, maxTokens = 900, purpose: ModelPurpose = 'generation') {
+  const provider = providerForPurpose(purpose);
+  const { apiKey, endpoint, model } = providerConfig(provider, purpose);
+  const controller = new AbortController();
+  // Scoring is a small grading task; cap it tighter so generation + scoring can't approach the Edge
+  // Function wall-clock limit. Generation and visual keep the full timeout.
+  const timeoutMs = purpose === 'scoring' ? scoringTimeoutMs() : openAiTimeoutMs();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     signal: controller.signal,
     headers: {
@@ -563,6 +881,12 @@ async function callOpenAiImage(prompt: string, options: { size: string; quality:
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), openAiImageTimeoutMs());
 
+  // gpt-image-2 prefers "auto" size/quality; gpt-image-1 takes explicit values. Both stay overridable
+  // via env so a new model's requirements can be set without a code change.
+  const isImage2 = model.includes('gpt-image-2');
+  const size = Deno.env.get('OPENAI_IMAGE_SIZE') || (isImage2 ? 'auto' : options.size);
+  const quality = Deno.env.get('OPENAI_IMAGE_QUALITY') || (isImage2 ? 'auto' : options.quality);
+
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     signal: controller.signal,
@@ -573,8 +897,8 @@ async function callOpenAiImage(prompt: string, options: { size: string; quality:
     body: JSON.stringify({
       model,
       prompt,
-      size: options.size,
-      quality: options.quality,
+      size,
+      quality,
       output_format: 'png',
       background: 'opaque',
     }),
@@ -715,7 +1039,7 @@ function posterTemplateForAngle(value: string): PosterTemplateId {
   if (text.includes('emotion') || text.includes('benefit')) return 'spotlight';
   return 'signature';
 }
-function parseContentCompletion(raw: string, requestedTargets: ContentTarget[], fallbackTitle: string) {
+function parsePostCompletion(raw: string, requestedTarget: PostTarget, fallbackTitle: string) {
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw);
@@ -725,33 +1049,128 @@ function parseContentCompletion(raw: string, requestedTargets: ContentTarget[], 
 
   const variants = Array.isArray(parsed.variants)
     ? parsed.variants
-        .map((variant) => normalizeContentVariant(variant))
-        .filter((variant): variant is ContentVariant => Boolean(variant))
+        .map((variant) => normalizePostVariant(variant))
+        .filter((variant): variant is PostVariant => Boolean(variant))
     : [];
 
-  const completeVariants = requestedTargets
-    .map((target) => variants.find((variant) => variant.target === target))
-    .filter((variant): variant is ContentVariant => Boolean(variant));
-
-  if (completeVariants.length === 0) {
-    throw new HttpError(502, 'The AI response did not include usable content.');
-  }
+  const variant = variants.find((item) => item.target === requestedTarget);
+  if (!variant) throw new HttpError(502, 'The AI response did not include usable content.');
 
   return {
+    kind: 'post' as const,
     title: limitedString(parsed.title, 140) || fallbackTitle,
     summary: limitedString(parsed.summary, 280),
-    variants: completeVariants,
+    variants: [variant],
   };
 }
 
-function normalizeContentVariant(value: unknown) {
+function normalizePostVariant(value: unknown) {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  const target = targetString(record.target) || targetString(record.platform);
+  const target = postTargetString(record.target) || postTargetString(record.platform);
   const title = limitedString(record.title, 140);
-  const body = limitedString(record.body, 6000);
+  const body = limitedString(record.body, 12_000);
   if (!target || !body) return null;
-  return { target, title: title || targetLabel(target), body };
+  return {
+    target,
+    title: title || targetLabel(target),
+    body,
+    cta: limitedString(record.cta, 160),
+    hashtags: normalizeHashtags(record.hashtags),
+    visualConcept: limitedString(record.visualConcept, 400),
+  };
+}
+
+function normalizeHashtags(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((tag) => limitedString(tag, 60).replace(/^#+/, '').trim())
+    .filter((tag) => tag.length > 0)
+    .slice(0, 10);
+}
+
+function parseVideoCompletion(raw: string, fallbackTitle: string, language: string, duration: ScriptDuration) {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const scenes = Array.isArray(parsed.scenes)
+    ? parsed.scenes
+        .map((scene, index) => normalizeScene(scene, index))
+        .filter((scene): scene is ScriptScene => Boolean(scene))
+    : [];
+
+  if (scenes.length === 0) throw new HttpError(502, 'The AI response did not include any scenes.');
+
+  const concept = limitedString(parsed.concept, 600);
+
+  return {
+    kind: 'video' as const,
+    title: limitedString(parsed.title, 140) || fallbackTitle,
+    summary: concept,
+    duration: limitedString(parsed.duration, 40) || `${duration} seconds`,
+    language: limitedString(parsed.language, 20) || language,
+    concept,
+    characters: Array.isArray(parsed.characters)
+      ? parsed.characters
+          .map((character) => normalizeCharacter(character))
+          .filter((character): character is ScriptCharacter => Boolean(character))
+          .slice(0, 8)
+      : [],
+    scenes,
+    finalVoiceOver: limitedString(parsed.finalVoiceOver, 600),
+    caption: limitedString(parsed.caption, 600),
+    hashtags: normalizeHashtags(parsed.hashtags),
+    whyItWorks: limitedString(parsed.whyItWorks, 800),
+  };
+}
+
+function normalizeCharacter(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const name = limitedString(record.name, 80);
+  if (!name) return null;
+  return { name, role: limitedString(record.role, 120), description: limitedString(record.description, 300) };
+}
+
+function normalizeScene(value: unknown, index: number) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const visual = limitedString(record.visual, 800);
+  const screenplay = limitedString(record.screenplay, 900);
+  const voiceOver = limitedString(record.voiceOver, 600);
+  const dialogue = Array.isArray(record.dialogue)
+    ? record.dialogue
+        .map((line) => normalizeDialogueLine(line))
+        .filter((line): line is ScriptDialogueLine => Boolean(line))
+        .slice(0, 12)
+    : [];
+
+  // A scene with no visual, no action, no dialogue and no voice-over is filler, not a scene.
+  if (!visual && !screenplay && !voiceOver && dialogue.length === 0) return null;
+
+  return {
+    sceneNumber: typeof record.sceneNumber === 'number' && record.sceneNumber > 0 ? record.sceneNumber : index + 1,
+    time: limitedString(record.time, 40),
+    heading: limitedString(record.heading, 120),
+    visual,
+    screenplay,
+    dialogue,
+    voiceOver,
+    screenText: limitedString(record.screenText, 300),
+    shotNotes: limitedString(record.shotNotes, 400),
+  };
+}
+
+function normalizeDialogueLine(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const line = limitedString(record.line, 500);
+  if (!line) return null;
+  return { character: limitedString(record.character, 80) || 'Voice', line };
 }
 
 async function loadBusinessDna(supabase: ServiceClient, orgId: string) {
@@ -789,16 +1208,15 @@ function summarizeBusinessDna(dna: Record<string, unknown>) {
   };
 }
 
-function targetString(value: unknown): ContentTarget | '' {
-  return typeof value === 'string' && contentTargets.includes(value as ContentTarget) ? value as ContentTarget : '';
+function postTargetString(value: unknown): PostTarget | '' {
+  return typeof value === 'string' && postTargets.includes(value as ContentTarget) ? value as PostTarget : '';
 }
 
-function targetLabel(target: ContentTarget) {
+function targetLabel(target: PostTarget) {
   return {
     linkedin: 'LinkedIn',
     blog: 'Blog',
     community: 'Community',
-    video_script: 'Video script',
   }[target];
 }
 
@@ -1406,8 +1824,19 @@ function maxStylesheetBytes() {
   return numberEnv('AI_STYLESHEET_MAX_BYTES', DEFAULT_MAX_STYLESHEET_BYTES, 20_000, 500_000);
 }
 
+function maxLogoBytes() {
+  return numberEnv('AI_LOGO_MAX_BYTES', DEFAULT_MAX_LOGO_BYTES, 50_000, 8_000_000);
+}
+
 function openAiTimeoutMs() {
-  return numberEnv('AI_OPENAI_TIMEOUT_MS', DEFAULT_OPENAI_TIMEOUT_MS, 5000, 60_000);
+  return numberEnv('AI_OPENAI_TIMEOUT_MS', DEFAULT_OPENAI_TIMEOUT_MS, 5000, 180_000);
+}
+
+function scoringTimeoutMs() {
+  // The scoring call also writes revisions when a draft is under the bar, so it needs more room than
+  // a pure grading call — but stays bounded so generation + gated revisions don't blow the Edge
+  // Function wall-clock. Lower AI_VIRALITY_MAX_REVISIONS if long scripts push total latency too high.
+  return numberEnv('AI_SCORING_TIMEOUT_MS', 40_000, 5000, 90_000);
 }
 
 function openAiImageTimeoutMs() {

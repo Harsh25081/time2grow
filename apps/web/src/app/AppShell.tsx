@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   Bot,
@@ -5,6 +6,7 @@ import {
   Dna,
   Home,
   Inbox,
+  Link2,
   LogOut,
   Send,
   Settings,
@@ -13,8 +15,17 @@ import {
 } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { BusinessDnaPage } from '../features/business-dna/BusinessDnaPage';
+import { ConnectionsPage } from '../features/connections/ConnectionsPage';
+import { ContentCreatorPage } from '../features/content-studio/ContentCreatorPage';
+import { PosterStudioAiPage } from '../features/poster-studio/PosterStudioAiPage';
 import { useAuth } from '../features/auth/AuthProvider';
 import { SocialHubPage } from '../features/social-hub/SocialHubPage';
+import { TasksPage } from '../features/tasks/TasksPage';
+import { deriveBrandDisplayName } from '../features/business-dna/brandIdentity';
+import { supabase } from '../lib/supabase';
+import type { Database } from '../types/database';
+
+type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 
 type NavItem = {
   to: string;
@@ -26,7 +37,10 @@ const primaryNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home },
   { to: '/business-dna', label: 'Business DNA', icon: Dna },
   { to: '/content', label: 'Content', icon: Sparkles },
+  { to: '/poster-ai', label: 'AI Posters', icon: Sparkles },
+  { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/social', label: 'Social', icon: Send },
+  { to: '/tasks', label: 'Tasks', icon: CalendarDays },
   { to: '/leads', label: 'Leads', icon: Target },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -42,8 +56,14 @@ const modules = [
   {
     title: 'Content Studio',
     description: 'Generate posts from DNA, campaign context, and persona tone.',
-    status: 'Ready after AI',
+    status: 'Live',
     color: 'purple',
+  },
+  {
+    title: 'Poster Studio',
+    description: 'Create premium AI posters from Business DNA and save them for publishing.',
+    status: 'Live',
+    color: 'pink',
   },
   {
     title: 'Social Hub',
@@ -54,7 +74,7 @@ const modules = [
   {
     title: 'Lead CRM',
     description: 'Track lead source, status, score, and follow-up timeline.',
-    status: 'Planned',
+    status: 'Coming soon',
     color: 'green',
   },
 ];
@@ -67,6 +87,32 @@ const stats = [
 
 export function AppShell() {
   const { profile, organization, membership, signOut, configured } = useAuth();
+  const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
+  const displayOrgName = useMemo(() => deriveBrandDisplayName(organization?.name, businessDna), [organization?.name, businessDna]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadBusinessDna() {
+      if (!supabase || !organization?.id) {
+        setBusinessDna(null);
+        return;
+      }
+
+      const { data } = await supabase
+        .from('business_dna')
+        .select('*')
+        .eq('org_id', organization.id)
+        .maybeSingle();
+
+      if (active) setBusinessDna(data ?? null);
+    }
+
+    loadBusinessDna();
+    return () => {
+      active = false;
+    };
+  }, [organization?.id]);
 
   return (
     <div className="app-shell">
@@ -91,7 +137,7 @@ export function AppShell() {
         <div className="sidebar-footer">
           <div>
             <span>{profile?.full_name ?? 'Creator'}</span>
-            <small>{membership?.role ?? 'owner'} - {organization?.name ?? 'Workspace'}</small>
+            <small>{membership?.role ?? 'owner'} - {displayOrgName}</small>
           </div>
           <button className="icon-button" type="button" onClick={signOut} aria-label="Sign out" title="Sign out">
             <LogOut size={18} />
@@ -107,13 +153,17 @@ export function AppShell() {
               <Dashboard
                 configured={configured}
                 profileName={profile?.full_name ?? 'Creator'}
-                orgName={organization?.name ?? 'Workspace'}
+                orgName={displayOrgName}
               />
             }
           />
           <Route path="/business-dna" element={<BusinessDnaPage />} />
-          <Route path="/content" element={<ModulePlaceholder title="Content Studio" icon={Sparkles} />} />
+          <Route path="/content" element={<ContentCreatorPage />} />
+          <Route path="/poster" element={<Navigate to="/poster-ai" replace />} />
+          <Route path="/poster-ai" element={<PosterStudioAiPage />} />
+          <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/social" element={<SocialHubPage />} />
+          <Route path="/tasks" element={<TasksPage />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
           <Route path="/settings" element={<ModulePlaceholder title="Settings" icon={Settings} />} />
@@ -121,9 +171,9 @@ export function AppShell() {
         </Routes>
       </main>
 
-      <button className="maya-launcher" type="button" title="Maya assistant">
+      <button className="maya-launcher" type="button" title="Maya assistant — coming soon" disabled>
         <Bot size={22} />
-        <span>Maya</span>
+        <span>Maya · Soon</span>
       </button>
 
       <nav className="bottom-nav" aria-label="Mobile navigation">
@@ -224,8 +274,8 @@ function ModulePlaceholder({ title, icon: Icon }: { title: string; icon: typeof 
 
       <section className="empty-state">
         <BarChart3 size={34} />
-        <h3>{title} is queued for the next build pass</h3>
-        <p>The auth foundation is ready first, so this module can safely read/write user-owned data.</p>
+        <h3>{title} is coming soon</h3>
+        <p>This module is not available yet. We are preparing it for a future release.</p>
       </section>
     </div>
   );

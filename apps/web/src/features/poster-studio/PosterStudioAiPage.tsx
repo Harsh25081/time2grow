@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Download, Loader2, Palette as PaletteIcon, Save, Send, Sparkles, Wand2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Download, Loader2, Save, Send, Sparkles, Wand2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toPng } from 'html-to-image';
 import { env } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
 import { deriveBrandDisplayName } from '../business-dna/brandIdentity';
+import { useBrandDna, BrandDnaSelect } from '../business-dna/useBrandDna';
+import type { ClientBusinessDnaRow } from '../business-dna/brandDna';
 import { useAuth } from '../auth/AuthProvider';
 import type { Database, Json } from '../../types/database';
 import {
@@ -20,6 +22,21 @@ import {
 } from './PosterTemplate';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
+type PosterLanguage = 'en' | 'te' | 'hi';
+type ContactKey = 'website' | 'phone' | 'email';
+type ContactDetails = Record<ContactKey, string>;
+const CONTACT_FIELDS: { key: ContactKey; label: string; placeholder: string }[] = [
+  { key: 'website', label: 'Website', placeholder: 'https://yourbusiness.com' },
+  { key: 'phone', label: 'Phone', placeholder: '+91 92769 69696' },
+  { key: 'email', label: 'Email', placeholder: 'hello@yourbusiness.com' },
+];
+type AiPosterLogoPlacement = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top-center' | 'bottom-center';
+type AiPosterLogoTreatment = 'plain' | 'light-plate' | 'dark-plate';
+type AiPosterLogo = { placement: AiPosterLogoPlacement; treatment: AiPosterLogoTreatment };
+type AiPosterProductPlacement = 'left' | 'right' | 'top' | 'bottom' | 'center';
+type AiPosterProductTreatment = 'plain' | 'soft-card';
+type AiPosterProduct = { placement: AiPosterProductPlacement; treatment: AiPosterProductTreatment; reason?: string };
+type ProductImageInput = { src: string; originalSrc: string; name: string; type: string; size: number; cutout: boolean };
 
 type PosterConcept = {
   id: string;
@@ -34,7 +51,10 @@ type AiPoster = {
   title: string;
   angle: string;
   imageDataUrl: string;
-  copy: { headline: string; subheadline: string; callToAction: string };
+  copy: { headline: string; subheadline: string; callToAction: string; contactText: string };
+  logo: AiPosterLogo;
+  qr: { placement: AiPosterLogoPlacement };
+  product: AiPosterProduct;
 };
 
 type AgentConcept = {
@@ -43,7 +63,17 @@ type AgentConcept = {
   angle?: string;
   imageDataUrl?: string;
   imageUrl?: string;
-  copy?: Partial<PosterContent> & { message?: string };
+  copy?: Partial<PosterContent> & { message?: string; contactText?: string; footerContact?: string };
+  logo?: Partial<AiPosterLogo>;
+  logoPlacement?: string;
+  logoTreatment?: string;
+  productImage?: Partial<AiPosterProduct>;
+  product?: Partial<AiPosterProduct>;
+  productImagePlacement?: string;
+  productImageTreatment?: string;
+  productImageReason?: string;
+  qr?: { placement?: string };
+  qrPlacement?: string;
 };
 
 type PosterAgentPayload = {
@@ -51,10 +81,11 @@ type PosterAgentPayload = {
   error?: string;
   mode?: string;
   concepts?: AgentConcept[];
+  previews?: string[];
   imageDataUrl?: string;
   imageUrl?: string;
   backgroundImageUrl?: string;
-  copy?: Partial<PosterContent> & { message?: string };
+  copy?: Partial<PosterContent> & { message?: string; contactText?: string; footerContact?: string };
   poster?: { imageUrl?: string; downloadUrl?: string; title?: string };
 };
 
@@ -62,18 +93,26 @@ export function PosterStudioAiPage() {
   const { organization, user } = useAuth();
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
   const [logoUrl, setLogoUrl] = useState('');
+  const [logoDisplayUrl, setLogoDisplayUrl] = useState('');
+  const [logoIsCutout, setLogoIsCutout] = useState(false);
+  const [qrUrl, setQrUrl] = useState('');
+  const [showQr, setShowQr] = useState(false);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [brief, setBrief] = useState('');
   const [objective, setObjective] = useState('');
   const [format, setFormat] = useState<PosterFormat>('portrait');
+  const [language, setLanguage] = useState<PosterLanguage>('en');
+  const [offerType, setOfferType] = useState('');
+  const [callToAction, setCallToAction] = useState('');
+  const [contactShow, setContactShow] = useState<Record<ContactKey, boolean>>({ website: false, phone: false, email: false });
+  const [contactValues, setContactValues] = useState<ContactDetails>({ website: '', phone: '', email: '' });
+  const [productImage, setProductImage] = useState<ProductImageInput | null>(null);
 
   const [concepts, setConcepts] = useState<PosterConcept[]>([]);
   const [aiPosters, setAiPosters] = useState<AiPoster[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [accentColor, setAccentColor] = useState('');
-  const [backgroundColor, setBackgroundColor] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [scale, setScale] = useState(1);
@@ -81,15 +120,23 @@ export function PosterStudioAiPage() {
   const stageRef = useRef<HTMLDivElement>(null);
   const posterRef = useRef<HTMLDivElement>(null);
 
-  const brandName = useMemo(() => deriveBrandDisplayName(organization?.name, businessDna), [organization?.name, businessDna]);
-  const brandColors = useMemo(() => parseBrandColors(businessDna), [businessDna]);
+  // Agency mode: the poster is designed for the selected client's brand DNA
+  // instead of the org's own. Single-workspace orgs always use their own DNA.
+  const isAgency = organization?.org_type === 'agency';
+  const { clients, selectedClient, selectedId: brandSelectionId, setSelectedId: setBrandSelectionId } = useBrandDna(organization?.id, isAgency);
+  // The effective brand DNA feeding this poster: a selected client, or our own.
+  const selectedDna: BusinessDnaRow | ClientBusinessDnaRow | null = selectedClient ?? businessDna;
+
+  const selfBrandName = useMemo(() => deriveBrandDisplayName(organization?.name, businessDna), [organization?.name, businessDna]);
+  const brandName = useMemo(() => (selectedClient ? selectedClient.name : selfBrandName), [selectedClient, selfBrandName]);
+  const brandColors = useMemo(() => parseBrandColors(selectedDna), [selectedDna]);
   const basePalette = useMemo(() => buildPalette(brandColors), [brandColors]);
-  const palette = useMemo(() => applyOverrides(basePalette, accentColor, backgroundColor), [basePalette, accentColor, backgroundColor]);
-  const colorSwatches = useMemo(() => buildColorSwatches(brandColors, basePalette.accent), [brandColors, basePalette.accent]);
+  const palette = basePalette;
   const dim = posterDimensions[format];
   const selectedConcept = useMemo(() => concepts.find((concept) => concept.id === selectedId) ?? concepts[0] ?? null, [concepts, selectedId]);
   const usingAi = aiPosters.length > 0;
   const selectedAiPoster = useMemo(() => aiPosters.find((poster) => poster.id === selectedId) ?? aiPosters[0] ?? null, [aiPosters, selectedId]);
+  const posterMemoryKey = organization?.id || user?.id || 'local';
 
   useEffect(() => {
     let active = true;
@@ -106,14 +153,9 @@ export function PosterStudioAiPage() {
         .eq('org_id', organization.id)
         .maybeSingle();
 
-      const nextLogoUrl = data?.logo_storage_bucket && data.logo_storage_path
-        ? await createStorageSignedUrl(data.logo_storage_bucket, data.logo_storage_path)
-        : '';
-
       if (!active) return;
       if (dnaError) setError(errorMessage(dnaError, 'Could not load Business DNA.'));
       setBusinessDna(data ?? null);
-      setLogoUrl(nextLogoUrl);
       setLoading(false);
     }
 
@@ -122,6 +164,68 @@ export function PosterStudioAiPage() {
       active = false;
     };
   }, [organization?.id]);
+
+  // Sign the SELECTED brand's logo/QR (our own or a client's) whenever the
+  // selection changes, so the overlays reflect whichever brand this poster is for.
+  useEffect(() => {
+    let active = true;
+    async function signAssets() {
+      const dna = selectedDna;
+      const nextLogoUrl = dna && dna.logo_storage_bucket && dna.logo_storage_path
+        ? await createStorageSignedUrl(dna.logo_storage_bucket, dna.logo_storage_path)
+        : '';
+      const nextQrUrl = dna && dna.qr_storage_bucket && dna.qr_storage_path
+        ? await createStorageSignedUrl(dna.qr_storage_bucket, dna.qr_storage_path)
+        : '';
+      if (!active) return;
+      setLogoUrl(nextLogoUrl);
+      setQrUrl(nextQrUrl);
+      if (!nextQrUrl) setShowQr(false);
+    }
+    signAssets();
+    return () => {
+      active = false;
+    };
+  }, [selectedDna?.logo_storage_bucket, selectedDna?.logo_storage_path, selectedDna?.qr_storage_bucket, selectedDna?.qr_storage_path]);
+
+  // Prefill the contact boxes from the selected brand DNA and pre-check the ones
+  // that have a value, so contact details are opt-out (uncheck what you don't want).
+  useEffect(() => {
+    if (!selectedDna) return;
+    const website = selectedDna.website_url ?? '';
+    const phone = selectedDna.contact_phone ?? '';
+    const email = selectedDna.contact_email ?? '';
+    setContactValues({ website, phone, email });
+    setContactShow({ website: Boolean(website), phone: Boolean(phone), email: Boolean(email) });
+  }, [selectedDna]);
+
+  // Show the raw logo immediately, then swap in a background-removed version so
+  // a white/solid logo backdrop does not appear as a box on the poster.
+  useEffect(() => {
+    let active = true;
+    if (!logoUrl) {
+      setLogoDisplayUrl('');
+      setLogoIsCutout(false);
+      return;
+    }
+    setLogoDisplayUrl(logoUrl);
+    setLogoIsCutout(false);
+    removeLogoBackground(logoUrl)
+      .then((processed) => {
+        if (!active) return;
+        setLogoDisplayUrl(processed.src || logoUrl);
+        setLogoIsCutout(processed.cutout);
+      })
+      .catch(() => {
+        if (active) {
+          setLogoDisplayUrl(logoUrl);
+          setLogoIsCutout(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [logoUrl]);
 
   useEffect(() => {
     const el = stageRef.current;
@@ -133,12 +237,53 @@ export function PosterStudioAiPage() {
     return () => ro.disconnect();
   }, [dim.width]);
 
+  useEffect(() => {
+    return () => releaseProductImage(productImage);
+  }, [productImage]);
   function updateSelectedContent<K extends keyof PosterContent>(key: K, value: PosterContent[K]) {
     if (!selectedConcept) return;
     const id = selectedConcept.id;
     setConcepts((current) => current.map((concept) => (concept.id === id ? { ...concept, content: { ...concept.content, [key]: value } } : concept)));
   }
 
+  function handleProductImageChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Upload a JPG, PNG, or WebP product image.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError('Use a product image under 10 MB so poster generation stays fast.');
+      return;
+    }
+
+    const rawSrc = URL.createObjectURL(file);
+    setError('');
+    setProductImage((current) => {
+      releaseProductImage(current);
+      return { src: rawSrc, originalSrc: rawSrc, name: file.name, type: file.type, size: file.size, cutout: false };
+    });
+
+    removeLogoBackground(rawSrc)
+      .then((processed) => {
+        if (!processed.cutout || !processed.src || processed.src === rawSrc) return;
+        setProductImage((current) => {
+          if (!current || current.originalSrc !== rawSrc) return current;
+          if (rawSrc.startsWith('blob:')) URL.revokeObjectURL(rawSrc);
+          return { ...current, src: processed.src, cutout: true };
+        });
+      })
+      .catch(() => undefined);
+  }
+
+  function clearProductImage() {
+    setProductImage((current) => {
+      releaseProductImage(current);
+      return null;
+    });
+  }
   async function handleGenerate() {
     if (!brief.trim()) {
       setError('Enter a poster brief first.');
@@ -158,7 +303,7 @@ export function PosterStudioAiPage() {
     if (hasWorkflow) {
       setConcepts([]);
       setSelectedId('');
-      setMessage('Sending your request to the poster workflow. This can take up to a minute...');
+      setMessage('Sending your request to the poster workflow. Creating one fast poster first...');
     } else {
       const nextConcepts = buildConceptSet(brief, objective, brandName);
       setConcepts(nextConcepts);
@@ -166,25 +311,47 @@ export function PosterStudioAiPage() {
       setMessage('No poster workflow is configured, so these are editable template concepts. Pick one, edit, then export.');
     }
 
+    const contactDetails: ContactDetails = {
+      website: contactShow.website ? contactValues.website.trim() : '',
+      phone: contactShow.phone ? contactValues.phone.trim() : '',
+      email: contactShow.email ? contactValues.email.trim() : '',
+    };
+    const learningContext = readPosterLearningContext(posterMemoryKey);
+
     try {
       const payload = await requestAiPoster({
         brief,
         objective,
         format,
+        language,
+        offerType,
+        callToAction,
+        contactDetails,
+        qr: { show: showQr && Boolean(qrUrl) },
         orgId: organization?.id ?? '',
         userId: user?.id ?? '',
         brandName,
         palette,
-        businessDna,
+        businessDna: selectedDna,
+        logoSource: selectedClient ? 'client_dna' : logoUrl ? 'business_dna' : 'wordmark',
         logoUrl,
+        productMarketingMode: Boolean(productImage),
+        productImage,
+        learningContext,
       });
 
       if (payload) {
-        const posters = extractAiPosters(payload);
+        const rawPosters = extractAiPosters(payload);
+        const freshPosters = rejectRepeatedAiPosterHeadlines(rawPosters, learningContext, brief);
+        const posters = freshPosters.length > 0 ? freshPosters : rawPosters;
         if (posters.length > 0) {
           setAiPosters(posters);
           setSelectedId(posters[0].id);
-          setMessage(`Your workflow returned ${posters.length} poster${posters.length > 1 ? 's' : ''}. Pick one, then Download, Save, or send to Social Hub.`);
+          const repeatedCount = rawPosters.length - freshPosters.length;
+          rememberPosterRequest(posterMemoryKey, { brief, objective, offerType, ctaInput: callToAction, language, format, posterCount: posters.length, titles: posters.flatMap((poster) => [poster.title, poster.copy.headline]).filter(Boolean).slice(0, 6) });
+          setMessage(freshPosters.length > 0
+            ? `Your workflow returned ${posters.length} fresh poster${posters.length > 1 ? 's' : ''}${repeatedCount > 0 ? ` and I skipped ${repeatedCount} repeated headline${repeatedCount > 1 ? 's' : ''}` : ''}. Pick one, then Download, Save, or send to Social Hub.`
+            : 'The workflow still reused an older headline, so I am showing the generated poster instead of wasting the wait. Generate again for a fresh direction.');
           return;
         }
         if (payload.ok === false && payload.error) {
@@ -219,19 +386,169 @@ export function PosterStudioAiPage() {
     return { dataUrl, blob };
   }
 
-  async function handleDownload() {
+  function renderAiLogoOverlay(currentScale: number, logoSettings?: AiPosterLogo) {
+    const settings = logoDisplayUrl && logoIsCutout ? { ...normalizeLogoSettings(logoSettings), treatment: 'plain' as AiPosterLogoTreatment } : normalizeLogoSettings(logoSettings);
+    const maxWidth = Math.max(54, dim.width * 0.2 * currentScale);
+    const maxHeight = Math.max(20, Math.min(80, Math.max(56, dim.width * 0.065)) * currentScale);
+    const padding = settings.treatment === 'plain' ? 0 : Math.max(3, 8 * currentScale);
+    const fontSize = Math.max(8, 22 * currentScale);
+    const box = logoOverlayBox(dim.width * currentScale, dim.height * currentScale, maxWidth, maxHeight, padding, settings.placement);
+    const usePlate = settings.treatment !== 'plain';
+    const darkPlate = settings.treatment === 'dark-plate';
+
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: box.left,
+          top: box.top,
+          zIndex: 2,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          maxWidth,
+          maxHeight,
+          padding,
+          borderRadius: usePlate ? Math.max(2, 6 * currentScale) : 0,
+          background: usePlate ? (darkPlate ? 'rgba(15,23,42,0.74)' : 'rgba(255,255,255,0.78)') : 'transparent',
+          boxShadow: usePlate ? '0 1px 8px rgba(15,23,42,0.12)' : 'none',
+          pointerEvents: 'none',
+        }}
+      >
+        {logoDisplayUrl ? (
+          <img src={logoDisplayUrl} alt="" style={{ display: 'block', maxWidth, maxHeight, objectFit: 'contain', filter: usePlate ? undefined : 'drop-shadow(0 2px 5px rgba(15,23,42,0.18))' }} />
+        ) : (
+          <span style={{ color: darkPlate ? '#FFFFFF' : '#111827', fontSize, fontWeight: 800, lineHeight: 1, whiteSpace: 'nowrap', textShadow: usePlate ? undefined : '0 1px 4px rgba(255,255,255,0.45)' }}>{brandName}</span>
+        )}
+      </span>
+    );
+  }
+
+  function renderProductOverlay(currentScale: number, productSettings?: AiPosterProduct) {
+    if (!productImage) return null;
+    const settings = productImage.cutout ? { ...normalizeProductSettings(productSettings), treatment: 'plain' as AiPosterProductTreatment } : normalizeProductSettings(productSettings);
+    const frame = productOverlayFrame(dim.width * currentScale, dim.height * currentScale, settings.placement);
+    const padding = settings.treatment === 'soft-card' ? Math.max(6, 14 * currentScale) : 0;
+    const useCard = settings.treatment === 'soft-card';
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: frame.left,
+          top: frame.top,
+          zIndex: 1,
+          width: frame.width,
+          height: frame.height,
+          padding,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: useCard ? Math.max(8, 22 * currentScale) : 0,
+          background: useCard ? 'rgba(255,255,255,0.88)' : 'transparent',
+          boxShadow: useCard ? '0 12px 34px rgba(15,23,42,0.16)' : 'none',
+          pointerEvents: 'none',
+        }}
+      >
+        <img src={productImage.src} alt="" style={{ display: 'block', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', filter: useCard ? undefined : 'drop-shadow(0 12px 22px rgba(15,23,42,0.22))' }} />
+      </span>
+    );
+  }
+  function renderQrOverlay(currentScale: number, placement: AiPosterLogoPlacement) {
+    if (!showQr || !qrUrl) return null;
+    const size = Math.max(40, dim.width * 0.16 * currentScale);
+    const padding = Math.max(3, 6 * currentScale);
+    const box = logoOverlayBox(dim.width * currentScale, dim.height * currentScale, size, size, padding, placement);
+    return (
+      <span
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          left: box.left,
+          top: box.top,
+          zIndex: 2,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: size + padding * 2,
+          height: size + padding * 2,
+          padding,
+          borderRadius: Math.max(2, 6 * currentScale),
+          background: '#FFFFFF',
+          boxShadow: '0 1px 8px rgba(15,23,42,0.16)',
+          pointerEvents: 'none',
+        }}
+      >
+        <img src={qrUrl} alt="" style={{ display: 'block', width: size, height: size, objectFit: 'contain' }} />
+      </span>
+    );
+  }
+
+  async function renderAiPosterWithLogo(poster: AiPoster): Promise<{ dataUrl: string; blob: Blob }> {
+    try {
+      const dataUrl = await composePosterWithLogo(poster.imageDataUrl, dim.width, dim.height, logoDisplayUrl || logoUrl, brandName, poster.logo, showQr ? qrUrl : '', pickQrPlacement(poster.qr.placement, poster.logo.placement), logoIsCutout, productImage?.src || '', poster.product, productImage?.cutout ?? false);
+      const blob = await (await fetch(dataUrl)).blob();
+      return { dataUrl, blob };
+    } catch {
+      const blob = await sourceToBlob(poster.imageDataUrl);
+      return { dataUrl: poster.imageDataUrl, blob };
+    }
+  }
+
+  async function downloadAiPoster(poster: AiPoster, index: number) {
+    const { dataUrl } = await renderAiPosterWithLogo(poster);
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = fileName((poster.copy.headline || poster.title) + ' option ' + (index + 1), dim.exportLabel);
+    link.click();
+  }
+
+  async function savePosterAsset(blob: Blob, title: string, body: string, index: number) {
+    if (!supabase || !organization?.id || !user?.id) throw new Error('Sign in and select a workspace before saving.');
+    const name = fileName(title, dim.exportLabel);
+    const storagePath = organization.id + '/poster-studio-ai/' + Date.now() + '-' + (index + 1) + '-' + name;
+
+    const { error: uploadError } = await supabase.storage
+      .from('post-media')
+      .upload(storagePath, blob, { cacheControl: '3600', contentType: 'image/png', upsert: false });
+    if (uploadError) throw new Error(errorMessage(uploadError, 'Could not upload the poster.'));
+
+    const { data: signed } = await supabase.storage.from('post-media').createSignedUrl(storagePath, 60 * 60 * 24 * 7);
+    const { error: contentError } = await supabase
+      .from('content_items')
+      .insert({
+        org_id: organization.id,
+        content_type: 'poster',
+        title,
+        body,
+        media_url: signed?.signedUrl ?? null,
+        status: 'ready',
+        created_by: user.id,
+      });
+    if (contentError) throw new Error(errorMessage(contentError, 'Could not save the poster record.'));
+  }
+
+  async function handleDownload(scope: 'selected' | 'all' = 'selected') {
     setError('');
     try {
-      if (usingAi && selectedAiPoster) {
-        const link = document.createElement('a');
-        link.href = selectedAiPoster.imageDataUrl;
-        link.download = fileName(selectedAiPoster.copy.headline || selectedAiPoster.title, dim.exportLabel);
-        link.click();
-        setMessage('Poster downloaded as PNG.');
+      if (usingAi) {
+        const postersToDownload = scope === 'all' ? aiPosters : selectedAiPoster ? [selectedAiPoster] : [];
+        if (postersToDownload.length === 0) {
+          setError('Generate a poster first.');
+          return;
+        }
+        for (const poster of postersToDownload) {
+          const posterIndex = aiPosters.findIndex((item) => item.id === poster.id);
+          await downloadAiPoster(poster, posterIndex >= 0 ? posterIndex : 0);
+          rememberPosterChoice(posterMemoryKey, poster, scope === 'all' ? 'download_all' : 'download');
+        }
+        setMessage(scope === 'all' ? postersToDownload.length + ' posters downloaded as PNG.' : 'Poster downloaded as PNG.');
         return;
       }
+
       if (!selectedConcept) {
-        setError('Generate posters first.');
+        setError('Generate a poster first.');
         return;
       }
       const { dataUrl } = await renderPng();
@@ -245,53 +562,39 @@ export function PosterStudioAiPage() {
     }
   }
 
-  async function handleSave() {
+  async function handleSave(scope: 'selected' | 'all' = 'selected') {
     if (!supabase || !organization?.id || !user?.id) return;
     setSaving(true);
     setMessage('');
     setError('');
 
     try {
-      let blob: Blob;
-      let title: string;
-      let body: string;
-
-      if (usingAi && selectedAiPoster) {
-        blob = await sourceToBlob(selectedAiPoster.imageDataUrl);
-        title = selectedAiPoster.copy.headline || selectedAiPoster.title;
-        body = [selectedAiPoster.copy.headline, selectedAiPoster.copy.subheadline, selectedAiPoster.copy.callToAction].filter(Boolean).join('\n');
-      } else if (selectedConcept) {
-        blob = (await renderPng()).blob;
-        const content = selectedConcept.content;
-        title = content.headline;
-        body = [content.headline, content.subheadline, content.offer, content.callToAction].filter(Boolean).join('\n');
-      } else {
-        setSaving(false);
+      if (usingAi) {
+        const postersToSave = scope === 'all' ? aiPosters : selectedAiPoster ? [selectedAiPoster] : [];
+        if (postersToSave.length === 0) {
+          setError('Generate a poster first.');
+          return;
+        }
+        for (const poster of postersToSave) {
+          const posterIndex = aiPosters.findIndex((item) => item.id === poster.id);
+          const optionIndex = posterIndex >= 0 ? posterIndex : 0;
+          const baseTitle = poster.copy.headline || poster.title || 'Poster';
+          const title = scope === 'all' ? baseTitle + ' - Option ' + (optionIndex + 1) : baseTitle;
+          const body = [poster.copy.headline, poster.copy.subheadline, poster.copy.callToAction, poster.copy.contactText].filter(Boolean).join('\n');
+          const { blob } = await renderAiPosterWithLogo(poster);
+          await savePosterAsset(blob, title, body, optionIndex);
+          rememberPosterChoice(posterMemoryKey, poster, scope === 'all' ? 'save_all' : 'save');
+        }
+        setMessage(scope === 'all' ? postersToSave.length + ' posters saved to your library.' : 'Poster saved to your library and ready for Social Hub.');
         return;
       }
 
-      const name = fileName(title, dim.exportLabel);
-      const storagePath = organization.id + '/poster-studio-ai/' + Date.now() + '-' + name;
-
-      const { error: uploadError } = await supabase.storage
-        .from('post-media')
-        .upload(storagePath, blob, { cacheControl: '3600', contentType: 'image/png', upsert: false });
-      if (uploadError) throw new Error(errorMessage(uploadError, 'Could not upload the poster.'));
-
-      const { data: signed } = await supabase.storage.from('post-media').createSignedUrl(storagePath, 60 * 60 * 24 * 7);
-      const { error: contentError } = await supabase
-        .from('content_items')
-        .insert({
-          org_id: organization.id,
-          content_type: 'poster',
-          title,
-          body,
-          media_url: signed?.signedUrl ?? null,
-          status: 'ready',
-          created_by: user.id,
-        });
-      if (contentError) throw new Error(errorMessage(contentError, 'Could not save the poster record.'));
-
+      if (!selectedConcept) return;
+      const content = selectedConcept.content;
+      const blob = (await renderPng()).blob;
+      const title = content.headline;
+      const body = [content.headline, content.subheadline, content.offer, content.callToAction].filter(Boolean).join('\n');
+      await savePosterAsset(blob, title, body, 0);
       setMessage('Poster saved to your library and ready for Social Hub.');
     } catch (saveError) {
       setError(errorMessage(saveError, 'Could not save the poster.'));
@@ -307,10 +610,6 @@ export function PosterStudioAiPage() {
           <p className="eyebrow">Create</p>
           <h2>AI Poster Studio</h2>
         </div>
-        <div className="poster-page-tabs" aria-label="Poster Studio tabs">
-          <Link to="/poster" className="poster-page-tab">Current Studio</Link>
-          <Link to="/poster-ai" className="poster-page-tab is-active">AI Studio</Link>
-        </div>
       </header>
 
       {loading ? (
@@ -322,6 +621,14 @@ export function PosterStudioAiPage() {
         <div className="ai-poster-layout">
           <section className="draft-panel ai-poster-control" aria-label="AI Poster controls">
             <div className="poster-panel-head"><h3>Brief</h3><Wand2 size={18} /></div>
+            {isAgency ? (
+              <BrandDnaSelect
+                selfLabel={'Our brand' + (selfBrandName ? ' (' + selfBrandName + ')' : '')}
+                clients={clients}
+                value={brandSelectionId}
+                onChange={setBrandSelectionId}
+              />
+            ) : null}
             <label className="poster-field">
               <span>Your request</span>
               <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4} placeholder="Describe the poster you want, e.g. Diwali wishes from AD96, or a bold laundry service offer" />
@@ -329,6 +636,79 @@ export function PosterStudioAiPage() {
             <label className="poster-field">
               <span>Goal (optional)</span>
               <input value={objective} onChange={(event) => setObjective(event.target.value)} placeholder="Leave blank, or add a goal e.g. festive wishes, lead generation" />
+            </label>
+            <div className="poster-field">
+              <span>Product image (optional)</span>
+              <div className="poster-upload-control">
+                {productImage ? (
+                  <div className="poster-upload-preview">
+                    <img src={productImage.src} alt="Uploaded product" />
+                    <div>
+                      <strong>{productImage.name}</strong>
+                      <small>{productImage.cutout ? 'Background removed when possible' : 'Used only for this poster'}</small>
+                    </div>
+                    <button type="button" className="poster-upload-remove" onClick={clearProductImage}>Remove</button>
+                  </div>
+                ) : (
+                  <label className="poster-upload-drop">
+                    <input type="file" accept="image/*" onChange={handleProductImageChange} />
+                    <span>Upload product photo</span>
+                    <small>For this poster only, not Business DNA</small>
+                  </label>
+                )}
+              </div>
+            </div>
+            <div className="poster-field-row">
+              <label className="poster-field">
+                <span>Offer type (optional)</span>
+                <select value={offerType} onChange={(event) => setOfferType(event.target.value)}>
+                  <option value="">None</option>
+                  <option value="offer-sale">Offer / sale</option>
+                  <option value="lead-generation">Lead generation</option>
+                  <option value="event-registration">Event / registration</option>
+                  <option value="awareness">Awareness / NGO</option>
+                  <option value="launch">Launch / announcement</option>
+                  <option value="festive-wishes">Festive wishes</option>
+                </select>
+              </label>
+              <label className="poster-field">
+                <span>CTA (optional)</span>
+                <input value={callToAction} onChange={(event) => setCallToAction(event.target.value)} placeholder="Book now, Register, Learn more" />
+              </label>
+            </div>
+            <div className="poster-field">
+              <span>Contact details to show (optional)</span>
+              <div className="poster-check-list">
+                {CONTACT_FIELDS.map((field) => (
+                  <div key={field.key} className="poster-check-row">
+                    <label className="poster-check-toggle">
+                      <input
+                        type="checkbox"
+                        checked={contactShow[field.key]}
+                        onChange={(event) => setContactShow((current) => ({ ...current, [field.key]: event.target.checked }))}
+                      />
+                      <span>{field.label}</span>
+                    </label>
+                    <input
+                      value={contactValues[field.key]}
+                      onChange={(event) => setContactValues((current) => ({ ...current, [field.key]: event.target.value }))}
+                      placeholder={field.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <label className="poster-check">
+              <input type="checkbox" checked={showQr} disabled={!qrUrl} onChange={(event) => setShowQr(event.target.checked)} />
+              <span>{qrUrl ? 'Show QR code on poster' : 'Show QR code (upload one in Business DNA first)'}</span>
+            </label>
+            <label className="poster-field">
+              <span>Language</span>
+              <select value={language} onChange={(event) => setLanguage(event.target.value as PosterLanguage)}>
+                <option value="en">English</option>
+                <option value="te">Telugu</option>
+                <option value="hi">Hindi</option>
+              </select>
             </label>
             <label className="poster-field">
               <span>Size</span>
@@ -342,7 +722,7 @@ export function PosterStudioAiPage() {
             </label>
             <button type="button" className="primary-action" onClick={handleGenerate} disabled={generating}>
               {generating ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-              <span>{generating ? 'Creating 3 posters' : 'Generate 3 posters'}</span>
+              <span>{generating ? 'Creating poster' : 'Generate poster'}</span>
             </button>
 
             {!usingAi && selectedConcept ? (
@@ -363,33 +743,16 @@ export function PosterStudioAiPage() {
               </>
             ) : null}
 
-            <div className="poster-panel-head"><h3>Theme</h3><PaletteIcon size={18} /></div>
-            <div className="poster-subhead">Accent color</div>
-            <div className="poster-tool-swatches" aria-label="Accent color">
-              <button type="button" className={!accentColor ? 'poster-color-swatch is-active' : 'poster-color-swatch'} title="Brand accent" style={{ background: basePalette.accent }} onClick={() => setAccentColor('')} />
-              {colorSwatches.map((color) => (
-                <button key={color} type="button" className={accentColor === color ? 'poster-color-swatch is-active' : 'poster-color-swatch'} title={color} style={{ background: color }} onClick={() => setAccentColor(color)} />
-              ))}
-              <input type="color" className="poster-color-input" title="Custom accent" aria-label="Custom accent color" value={accentColor || basePalette.accent} onChange={(event) => setAccentColor(event.target.value.toUpperCase())} />
-            </div>
-            <div className="poster-subhead">Background color</div>
-            <div className="poster-tool-swatches" aria-label="Background color">
-              <button type="button" className={!backgroundColor ? 'poster-color-swatch is-active' : 'poster-color-swatch'} title="Auto background" style={{ background: basePalette.bg }} onClick={() => setBackgroundColor('')} />
-              {colorSwatches.map((color) => (
-                <button key={`bg-${color}`} type="button" className={backgroundColor === color ? 'poster-color-swatch is-active' : 'poster-color-swatch'} title={color} style={{ background: color }} onClick={() => setBackgroundColor(color)} />
-              ))}
-              <input type="color" className="poster-color-input" title="Custom background" aria-label="Custom background color" value={backgroundColor || basePalette.bg} onChange={(event) => setBackgroundColor(event.target.value.toUpperCase())} />
-            </div>
-
-            {usingAi ? <span className="poster-group-note">The theme guides the next generation. AI posters have their text and colours baked in.</span> : null}
           </section>
 
           <section className="ai-poster-workspace" aria-label="AI Poster canvas">
             <div className="poster-preview-bar poster-canvas-topbar">
               <span className="poster-preview-label">{brandName} - {dim.exportLabel}</span>
               <div className="poster-actions">
-                <button type="button" className="primary-action" onClick={handleDownload} disabled={!usingAi && !selectedConcept}><Download size={16} /><span>Download PNG</span></button>
-                <button type="button" className="icon-text-button" onClick={handleSave} disabled={saving || !businessDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save'}</span></button>
+                <button type="button" className="primary-action" onClick={() => handleDownload('selected')} disabled={!usingAi && !selectedConcept}><Download size={16} /><span>{usingAi && aiPosters.length > 1 ? 'Download selected' : 'Download PNG'}</span></button>
+                {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleDownload('all')}><Download size={16} /><span>Download all</span></button> : null}
+                <button type="button" className="icon-text-button" onClick={() => handleSave('selected')} disabled={saving || !selectedDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : usingAi && aiPosters.length > 1 ? 'Save selected' : 'Save'}</span></button>
+                {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleSave('all')} disabled={saving || !selectedDna}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save all'}</span></button> : null}
                 <Link className="icon-text-button" to="/social"><Send size={16} /><span>Social Hub</span></Link>
               </div>
             </div>
@@ -397,7 +760,12 @@ export function PosterStudioAiPage() {
             {usingAi && selectedAiPoster ? (
               <>
                 <div className="ai-poster-stage-wrap" ref={stageRef} style={{ minHeight: dim.height * scale + 28 }}>
-                  <img className="ai-poster-image" src={selectedAiPoster.imageDataUrl} alt={selectedAiPoster.title} style={{ width: dim.width * scale, height: dim.height * scale }} />
+                  <div style={{ position: 'relative', width: dim.width * scale, height: dim.height * scale }}>
+                    <img className="ai-poster-image" src={selectedAiPoster.imageDataUrl} alt={selectedAiPoster.title} style={{ width: '100%', height: '100%', display: 'block' }} />
+                    {renderProductOverlay(scale, selectedAiPoster.product)}
+                    {renderAiLogoOverlay(scale, selectedAiPoster.logo)}
+                    {renderQrOverlay(scale, pickQrPlacement(selectedAiPoster.qr.placement, selectedAiPoster.logo.placement))}
+                  </div>
                 </div>
 
                 <div className="ai-poster-filmstrip" role="listbox" aria-label="Choose a poster">
@@ -413,8 +781,11 @@ export function PosterStudioAiPage() {
                         className={active ? 'ai-poster-thumb is-active' : 'ai-poster-thumb'}
                         onClick={() => setSelectedId(poster.id)}
                       >
-                        <span className="ai-poster-thumb-frame" style={{ width: dim.width * thumbScale, height: dim.height * thumbScale }}>
+                        <span className="ai-poster-thumb-frame" style={{ width: dim.width * thumbScale, height: dim.height * thumbScale, position: 'relative', overflow: 'hidden' }}>
                           <img src={poster.imageDataUrl} alt={poster.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          {renderProductOverlay(thumbScale, poster.product)}
+                          {renderAiLogoOverlay(thumbScale, poster.logo)}
+                          {renderQrOverlay(thumbScale, pickQrPlacement(poster.qr.placement, poster.logo.placement))}
                         </span>
                         <span className="ai-poster-thumb-meta">
                           <strong>Option {index + 1}</strong>
@@ -436,8 +807,8 @@ export function PosterStudioAiPage() {
                       content={selectedConcept.content}
                       palette={palette}
                       brandName={brandName}
-                      logoUrl={logoUrl}
-                      logoAlt={businessDna?.logo_alt_text ?? brandName + ' logo'}
+                      logoUrl={logoDisplayUrl || logoUrl}
+                      logoAlt={selectedDna?.logo_alt_text ?? brandName + ' logo'}
                     />
                   </div>
                 </div>
@@ -463,7 +834,7 @@ export function PosterStudioAiPage() {
                               content={concept.content}
                               palette={palette}
                               brandName={brandName}
-                              logoUrl={logoUrl}
+                              logoUrl={logoDisplayUrl || logoUrl}
                               logoAlt={brandName + ' logo'}
                             />
                           </span>
@@ -480,8 +851,8 @@ export function PosterStudioAiPage() {
             ) : (
               <section className="empty-state" aria-label="No posters yet">
                 <Sparkles size={26} />
-                <h3>Generate 3 posters</h3>
-                <p>Enter a topic and objective, then Generate. The AI designs three finished posters - pick your favourite from the bar to export.</p>
+                <h3>Generate one poster</h3>
+                <p>Enter a brief, optionally attach a product photo, then Generate. The AI designs one finished poster you can export.</p>
               </section>
             )}
 
@@ -498,23 +869,32 @@ async function requestAiPoster(params: {
   brief: string;
   objective: string;
   format: PosterFormat;
+  language: PosterLanguage;
+  offerType: string;
+  callToAction: string;
+  contactDetails: ContactDetails;
+  qr: { show: boolean };
   orgId: string;
   userId: string;
   brandName: string;
   palette: PosterPalette;
-  businessDna: BusinessDnaRow | null;
+  businessDna: BusinessDnaRow | ClientBusinessDnaRow | null;
+  logoSource?: string;
   logoUrl: string;
+  productMarketingMode: boolean;
+  productImage: ProductImageInput | null;
+  learningContext: PosterLearningContext;
 }): Promise<PosterAgentPayload | null> {
   // When an n8n webhook is configured, it is the ONLY poster engine - the app
   // just relays the request and renders whatever the workflow returns.
   if (env.n8nPosterWebhookUrl.trim()) {
-    return await requestN8nPoster(params).catch(() => null);
+    return await requestN8nPoster(params);
   }
 
   // No workflow configured: use the Supabase ai-handler as an offline engine.
   if (supabase && params.orgId) {
     const { data, error } = await supabase.functions.invoke('ai-handler', {
-      body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, quality: 'high' },
+      body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high' },
     });
     if (!error && data) return data as PosterAgentPayload;
   }
@@ -526,18 +906,30 @@ async function requestN8nPoster(params: {
   brief: string;
   objective: string;
   format: PosterFormat;
+  language: PosterLanguage;
+  offerType: string;
+  callToAction: string;
+  contactDetails: ContactDetails;
+  qr: { show: boolean };
   orgId: string;
   userId: string;
   brandName: string;
   palette: PosterPalette;
-  businessDna: BusinessDnaRow | null;
+  businessDna: BusinessDnaRow | ClientBusinessDnaRow | null;
+  logoSource?: string;
   logoUrl: string;
+  productMarketingMode: boolean;
+  productImage: ProductImageInput | null;
+  learningContext: PosterLearningContext;
 }): Promise<PosterAgentPayload | null> {
   const url = env.n8nPosterWebhookUrl.trim();
   if (!url || !params.orgId) return null;
 
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 120000);
+  // Wait longer than the workflow's own ceilings (DeepSeek plan 120s + image
+  // generation) so a slow run finishes instead of the app aborting while n8n
+  // is still working.
+  const timeout = window.setTimeout(() => controller.abort(), 300000);
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -555,15 +947,43 @@ async function requestN8nPoster(params: {
         topic: params.brief,
         objective: params.objective,
         format: params.format,
-        count: 3,
+        language: params.language,
+        offerType: params.offerType,
+        cta: params.callToAction,
+        callToAction: params.callToAction,
+        contactDetails: params.contactDetails,
+        qr: { show: params.qr.show },
+        theme: 'custom',
+        sizes: [posterDimensions[params.format].exportLabel],
+        count: 1,
+        conceptCount: 1,
+        previewCount: 1,
         brandName: params.brandName,
         palette: params.palette,
         businessDna: buildBusinessDnaPayload(params.businessDna),
-        logo: { url: params.logoUrl, brandName: params.brandName, source: params.logoUrl ? 'business_dna' : 'wordmark' },
+        logo: { url: params.logoUrl, brandName: params.brandName, source: params.logoSource ?? (params.logoUrl ? 'business_dna' : 'wordmark') },
+        productMarketingMode: params.productMarketingMode,
+        productImage: params.productMarketingMode && params.productImage ? { available: true, name: params.productImage.name, type: params.productImage.type, source: 'poster_upload', hasCutout: params.productImage.cutout } : { available: false, source: 'none' },
+        learningContext: params.learningContext,
       }),
     });
-    if (!response.ok) return null;
-    return (await response.json().catch(() => null)) as PosterAgentPayload | null;
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      return {
+        ok: false,
+        error: 'Poster workflow returned HTTP ' + response.status + (details ? ': ' + details.slice(0, 500) : '.'),
+      };
+    }
+    const payload = (await response.json().catch(() => null)) as PosterAgentPayload | null;
+    return payload ?? { ok: false, error: 'Poster workflow returned an empty response.' };
+  } catch (requestError) {
+    if (requestError instanceof DOMException && requestError.name === 'AbortError') {
+      return { ok: false, error: 'Poster workflow timed out after 5 minutes. n8n may still be generating images; try again with a smaller brief or check the latest n8n execution.' };
+    }
+    return {
+      ok: false,
+      error: errorMessage(requestError, 'Browser could not connect to the poster workflow at ' + url + '. Make sure n8n is running and the workflow is active.'),
+    };
   } finally {
     window.clearTimeout(timeout);
   }
@@ -571,6 +991,32 @@ async function requestN8nPoster(params: {
 
 // Read finished poster images out of the agent response. Supports the n8n
 // poster_set shape (concepts[]) and the single-image ai-handler shape.
+function normalizePosterHeadline(value: string) {
+  return value.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function isLazyContentHeadline(value: string) {
+  const headline = normalizePosterHeadline(value);
+  return [
+    /^content without [a-z0-9]+$/,
+    /^(manage|launch|create|plan|post|publish|grow|scale|organize) content [a-z0-9]+$/,
+    /^content (made|that|for) [a-z0-9]+$/,
+  ].some((pattern) => pattern.test(headline));
+}
+
+function rejectRepeatedAiPosterHeadlines(posters: AiPoster[], learningContext: PosterLearningContext, brief: string) {
+  const forbidden = new Set((learningContext.forbiddenHeadlines || []).map(normalizePosterHeadline).filter(Boolean));
+  const requestedText = normalizePosterHeadline(brief);
+  const seen = new Set<string>();
+  return posters.filter((poster) => {
+    const key = normalizePosterHeadline(poster.copy.headline || poster.title);
+    if (!key) return true;
+    const explicitlyRequested = requestedText.includes(key);
+    if (forbidden.has(key) || seen.has(key) || (isLazyContentHeadline(key) && !explicitlyRequested)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 function extractAiPosters(payload: PosterAgentPayload): AiPoster[] {
   if (Array.isArray(payload.concepts)) {
     return payload.concepts
@@ -586,9 +1032,33 @@ function extractAiPosters(payload: PosterAgentPayload): AiPoster[] {
             headline: stringValue(concept.copy?.headline),
             subheadline: stringValue(concept.copy?.subheadline) || stringValue(concept.copy?.message),
             callToAction: stringValue(concept.copy?.callToAction),
+            contactText: stringValue(concept.copy?.contactText) || stringValue(concept.copy?.footerContact),
           },
+          logo: normalizeAgentLogo(concept, index),
+          qr: { placement: normalizeAgentQr(concept) },
+          product: normalizeAgentProduct(concept, index),
         } satisfies AiPoster;
       })
+      .filter((poster): poster is AiPoster => Boolean(poster));
+  }
+
+  if (Array.isArray(payload.previews) && payload.previews.length) {
+    return payload.previews
+      .map((preview, index) => stringValue(preview) ? ({
+        id: 'preview-' + (index + 1),
+        title: 'Preview ' + (index + 1),
+        angle: 'AI preview',
+        imageDataUrl: stringValue(preview),
+        copy: {
+          headline: stringValue(payload.copy?.headline),
+          subheadline: stringValue(payload.copy?.subheadline) || stringValue(payload.copy?.message),
+          callToAction: stringValue(payload.copy?.callToAction),
+          contactText: stringValue(payload.copy?.contactText) || stringValue(payload.copy?.footerContact),
+        },
+        logo: normalizeLogoSettings(),
+        qr: { placement: 'bottom-right' as AiPosterLogoPlacement },
+        product: normalizeProductSettings(),
+      } satisfies AiPoster) : null)
       .filter((poster): poster is AiPoster => Boolean(poster));
   }
 
@@ -603,12 +1073,19 @@ function extractAiPosters(payload: PosterAgentPayload): AiPoster[] {
       headline: stringValue(payload.copy?.headline),
       subheadline: stringValue(payload.copy?.subheadline) || stringValue(payload.copy?.message),
       callToAction: stringValue(payload.copy?.callToAction),
+      contactText: stringValue(payload.copy?.contactText) || stringValue(payload.copy?.footerContact),
     },
+    logo: normalizeLogoSettings(),
+    qr: { placement: 'bottom-right' as AiPosterLogoPlacement },
+    product: normalizeProductSettings(),
   }];
 }
 
+function firstString(values: unknown) {
+  return Array.isArray(values) ? values.map((value) => stringValue(value)).find(Boolean) || '' : '';
+}
 function firstImage(payload: PosterAgentPayload) {
-  return stringValue(payload.imageDataUrl)
+  return firstString(payload.previews) || stringValue(payload.imageDataUrl)
     || stringValue(payload.backgroundImageUrl)
     || stringValue(payload.imageUrl)
     || stringValue(payload.poster?.imageUrl)
@@ -625,6 +1102,368 @@ async function sourceToBlob(src: string): Promise<Blob> {
     return new Blob([bytes], { type: mime });
   }
   return (await fetch(src)).blob();
+}
+
+// Bake the brand logo into the finished poster at the AI-chosen placement and
+// treatment, so downloads/saves match what the preview overlay shows.
+async function composePosterWithLogo(imageSrc: string, width: number, height: number, logoUrl: string, brandName: string, logoSettings?: AiPosterLogo, qrUrl?: string, qrPlacement?: AiPosterLogoPlacement, logoIsCutout = false, productImageUrl = '', productSettings?: AiPosterProduct, productIsCutout = false) {
+  const settings = logoUrl && logoIsCutout ? { ...normalizeLogoSettings(logoSettings), treatment: 'plain' as AiPosterLogoTreatment } : normalizeLogoSettings(logoSettings);
+  const posterImage = await loadCanvasImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas is not available.');
+
+  ctx.drawImage(posterImage, 0, 0, width, height);
+  if (productImageUrl) {
+    try {
+      const productSettingsForExport = productIsCutout ? { ...normalizeProductSettings(productSettings), treatment: 'plain' as AiPosterProductTreatment } : normalizeProductSettings(productSettings);
+      const product = await loadCanvasImage(productImageUrl);
+      const frame = productOverlayFrame(width, height, productSettingsForExport.placement);
+      const productPad = productSettingsForExport.treatment === 'soft-card' ? Math.round(Math.max(16, width * 0.018)) : 0;
+      if (productSettingsForExport.treatment === 'soft-card') drawProductPlate(ctx, frame.left, frame.top, frame.width, frame.height);
+      drawContainedImage(ctx, product, frame.left + productPad, frame.top + productPad, frame.width - productPad * 2, frame.height - productPad * 2, productSettingsForExport.treatment === 'plain');
+    } catch {
+      // Product upload failed to load; keep the generated poster usable.
+    }
+  }
+  const margin = Math.round(width * 0.055);
+  const targetHeight = Math.round(Math.min(80, Math.max(56, width * 0.065)));
+  const maxWidth = Math.round(width * 0.22);
+  const usePlate = settings.treatment !== 'plain';
+  const darkPlate = settings.treatment === 'dark-plate';
+  const padding = usePlate ? Math.round(Math.max(8, width * 0.008)) : 0;
+  let drewLogo = false;
+
+  if (logoUrl) {
+    try {
+      const logo = await loadCanvasImage(logoUrl);
+      const ratio = logo.naturalWidth && logo.naturalHeight ? logo.naturalWidth / logo.naturalHeight : 1;
+      const logoWidth = Math.min(maxWidth, Math.round(targetHeight * ratio));
+      const logoHeight = Math.round(logoWidth / ratio);
+      const boxWidth = logoWidth + padding * 2;
+      const boxHeight = logoHeight + padding * 2;
+      const pos = logoCanvasPosition(width, height, boxWidth, boxHeight, margin, settings.placement);
+      if (usePlate) drawLogoPlate(ctx, pos.left, pos.top, boxWidth, boxHeight, darkPlate);
+      drawWithOptionalShadow(ctx, !usePlate, () => ctx.drawImage(logo, pos.left + padding, pos.top + padding, logoWidth, logoHeight));
+      drewLogo = true;
+    } catch {
+      drewLogo = false;
+    }
+  }
+
+  if (!drewLogo) {
+    const text = (brandName || 'time2grow').trim();
+    const fontSize = Math.round(width * 0.028);
+    ctx.font = '800 ' + fontSize + 'px Inter, Arial, sans-serif';
+    const textWidth = Math.min(maxWidth, Math.ceil(ctx.measureText(text).width));
+    const boxWidth = textWidth + padding * 2;
+    const boxHeight = fontSize + padding * 2;
+    const pos = logoCanvasPosition(width, height, boxWidth, boxHeight, margin, settings.placement);
+    if (usePlate) drawLogoPlate(ctx, pos.left, pos.top, boxWidth, boxHeight, darkPlate);
+    ctx.fillStyle = darkPlate ? '#FFFFFF' : '#111827';
+    ctx.textBaseline = 'middle';
+    drawWithOptionalShadow(ctx, !usePlate, () => ctx.fillText(text, pos.left + padding, pos.top + padding + fontSize / 2, maxWidth));
+  }
+
+  if (qrUrl) {
+    try {
+      const qr = await loadCanvasImage(qrUrl);
+      const qrSize = Math.round(width * 0.16);
+      const qrPad = Math.round(Math.max(8, width * 0.01));
+      const boxWidth = qrSize + qrPad * 2;
+      const boxHeight = qrSize + qrPad * 2;
+      const pos = logoCanvasPosition(width, height, boxWidth, boxHeight, margin, qrPlacement || 'bottom-right');
+      // Solid white quiet-zone so the code always scans, even over busy art.
+      drawQrPlate(ctx, pos.left, pos.top, boxWidth, boxHeight);
+      ctx.drawImage(qr, pos.left + qrPad, pos.top + qrPad, qrSize, qrSize);
+    } catch {
+      // QR failed to load; skip it rather than fail the whole export.
+    }
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
+function drawProductPlate(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.shadowColor = 'rgba(15,23,42,0.18)';
+  ctx.shadowBlur = 28;
+  ctx.shadowOffsetY = 12;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, Math.max(18, Math.round(Math.min(width, height) * 0.06)));
+    ctx.fill();
+  } else {
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.restore();
+}
+
+
+function drawContainedImage(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, withShadow: boolean) {
+  const imageWidth = image.naturalWidth || image.width || 1;
+  const imageHeight = image.naturalHeight || image.height || 1;
+  const ratio = Math.min(width / imageWidth, height / imageHeight);
+  const drawWidth = imageWidth * ratio;
+  const drawHeight = imageHeight * ratio;
+  const left = x + (width - drawWidth) / 2;
+  const top = y + (height - drawHeight) / 2;
+  drawWithOptionalShadow(ctx, withShadow, () => ctx.drawImage(image, left, top, drawWidth, drawHeight));
+}
+function drawQrPlate(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number) {
+  ctx.save();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.shadowColor = 'rgba(15,23,42,0.16)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 4;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, 8);
+    ctx.fill();
+  } else {
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.restore();
+}
+
+// Top-left corner of the logo box for a given placement, keeping a safe margin.
+function logoCanvasPosition(width: number, height: number, boxWidth: number, boxHeight: number, margin: number, placement: AiPosterLogoPlacement) {
+  const left = placement.includes('left')
+    ? margin
+    : placement.includes('right')
+      ? width - boxWidth - margin
+      : Math.round((width - boxWidth) / 2);
+  const top = placement.startsWith('top') ? margin : height - boxHeight - margin;
+  return { left, top };
+}
+
+function drawWithOptionalShadow(ctx: CanvasRenderingContext2D, withShadow: boolean, draw: () => void) {
+  if (!withShadow) {
+    draw();
+    return;
+  }
+  ctx.save();
+  ctx.shadowColor = 'rgba(15,23,42,0.28)';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetY = 3;
+  draw();
+  ctx.restore();
+}
+
+function drawLogoPlate(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, dark: boolean) {
+  ctx.save();
+  ctx.fillStyle = dark ? 'rgba(15,23,42,0.74)' : 'rgba(255,255,255,0.78)';
+  ctx.shadowColor = 'rgba(15,23,42,0.16)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 4;
+  if (typeof ctx.roundRect === 'function') {
+    ctx.beginPath();
+    ctx.roundRect(x, y, width, height, 8);
+    ctx.fill();
+  } else {
+    ctx.fillRect(x, y, width, height);
+  }
+  ctx.restore();
+}
+
+const LOGO_PLACEMENTS: AiPosterLogoPlacement[] = ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'top-center', 'bottom-center'];
+const LOGO_TREATMENTS: AiPosterLogoTreatment[] = ['plain', 'light-plate', 'dark-plate'];
+const PRODUCT_PLACEMENTS: AiPosterProductPlacement[] = ['left', 'right', 'top', 'bottom', 'center'];
+const PRODUCT_TREATMENTS: AiPosterProductTreatment[] = ['plain', 'soft-card'];
+
+function fallbackLogoPlacement(index = 0): AiPosterLogoPlacement {
+  const order: AiPosterLogoPlacement[] = ['top-right', 'top-left', 'top-center'];
+  return order[Math.abs(index) % order.length];
+}
+
+// Coerce whatever the workflow sends (or nothing) into a valid logo setting.
+function normalizeLogoSettings(settings?: { placement?: string; treatment?: string } | null, fallbackPlacement: AiPosterLogoPlacement = 'top-right'): AiPosterLogo {
+  const placement = settings?.placement as AiPosterLogoPlacement | undefined;
+  const treatment = settings?.treatment as AiPosterLogoTreatment | undefined;
+  return {
+    placement: placement && LOGO_PLACEMENTS.includes(placement) ? placement : fallbackPlacement,
+    treatment: treatment && LOGO_TREATMENTS.includes(treatment) ? treatment : 'plain',
+  };
+}
+
+// The workflow may nest logo hints under `logo` or send them flat.
+function normalizeAgentLogo(concept: AgentConcept, index = 0): AiPosterLogo {
+  return normalizeLogoSettings({
+    placement: stringValue(concept.logo?.placement) || stringValue(concept.logoPlacement),
+    treatment: stringValue(concept.logo?.treatment) || stringValue(concept.logoTreatment),
+  }, fallbackLogoPlacement(index));
+}
+
+function fallbackProductPlacement(index = 0): AiPosterProductPlacement {
+  const order: AiPosterProductPlacement[] = ['right', 'left', 'center'];
+  return order[Math.abs(index) % order.length];
+}
+
+function normalizeProductSettings(settings?: { placement?: string; treatment?: string; reason?: string } | null, fallbackPlacement: AiPosterProductPlacement = 'right'): AiPosterProduct {
+  const placement = settings?.placement as AiPosterProductPlacement | undefined;
+  const treatment = settings?.treatment as AiPosterProductTreatment | undefined;
+  return {
+    placement: placement && PRODUCT_PLACEMENTS.includes(placement) ? placement : fallbackPlacement,
+    treatment: treatment && PRODUCT_TREATMENTS.includes(treatment) ? treatment : 'soft-card',
+    reason: stringValue(settings?.reason),
+  };
+}
+
+function normalizeAgentProduct(concept: AgentConcept, index = 0): AiPosterProduct {
+  const nested: Partial<AiPosterProduct> = concept.productImage ?? concept.product ?? {};
+  return normalizeProductSettings({
+    placement: stringValue(nested.placement) || stringValue(concept.productImagePlacement),
+    treatment: stringValue(nested.treatment) || stringValue(concept.productImageTreatment),
+    reason: stringValue(nested.reason) || stringValue(concept.productImageReason),
+  }, fallbackProductPlacement(index));
+}
+function normalizeAgentQr(concept: AgentConcept): AiPosterLogoPlacement {
+  const raw = (stringValue(concept.qr?.placement) || stringValue(concept.qrPlacement)) as AiPosterLogoPlacement;
+  return LOGO_PLACEMENTS.includes(raw) ? raw : 'bottom-right';
+}
+
+// Keep the QR out of the logo's corner; if they collide, shift the QR.
+function pickQrPlacement(qr: AiPosterLogoPlacement, logo: AiPosterLogoPlacement): AiPosterLogoPlacement {
+  if (qr !== logo) return qr;
+  const order: AiPosterLogoPlacement[] = ['bottom-right', 'bottom-left', 'top-right', 'top-left', 'bottom-center', 'top-center'];
+  return order.find((placement) => placement !== logo) ?? 'bottom-right';
+}
+
+// Top-left corner of the DOM logo overlay box for a given placement.
+function logoOverlayBox(width: number, height: number, boxWidth: number, boxHeight: number, padding: number, placement: AiPosterLogoPlacement) {
+  const margin = Math.max(6, width * 0.045);
+  const totalWidth = boxWidth + padding * 2;
+  const totalHeight = boxHeight + padding * 2;
+  const left = placement.includes('left')
+    ? margin
+    : placement.includes('right')
+      ? width - totalWidth - margin
+      : (width - totalWidth) / 2;
+  const top = placement.startsWith('top') ? margin : height - totalHeight - margin;
+  return { left, top };
+}
+
+function productOverlayFrame(width: number, height: number, placement: AiPosterProductPlacement) {
+  const margin = Math.max(14, width * 0.06);
+  const isWide = width > height;
+  const frameWidth = placement === 'left' || placement === 'right'
+    ? width * (isWide ? 0.32 : 0.36)
+    : width * (isWide ? 0.34 : 0.5);
+  const frameHeight = placement === 'top' || placement === 'bottom'
+    ? height * (isWide ? 0.38 : 0.26)
+    : height * (isWide ? 0.52 : 0.34);
+  const left = placement === 'left'
+    ? margin
+    : placement === 'right'
+      ? width - frameWidth - margin
+      : (width - frameWidth) / 2;
+  const top = placement === 'top'
+    ? margin * 1.4
+    : placement === 'bottom'
+      ? height - frameHeight - Math.max(margin * 1.4, height * 0.12)
+      : (height - frameHeight) / 2;
+  return { left, top, width: frameWidth, height: frameHeight };
+}
+function loadCanvasImage(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+    image.crossOrigin = 'anonymous';
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Could not load image.'));
+    image.src = src;
+  });
+}
+
+function colorDistance(r: number, g: number, b: number, bg: [number, number, number]) {
+  const dr = r - bg[0];
+  const dg = g - bg[1];
+  const db = b - bg[2];
+  return Math.sqrt(dr * dr + dg * dg + db * db);
+}
+
+// Remove a flat (e.g. white) background from a logo so only the mark shows when
+// overlaid on a poster. Flood-fills from the borders so a white mark surrounded
+// by the logo is preserved - only the OUTER connected background is cleared.
+// Returns the original src untouched if the logo is already transparent, the
+// background is not uniform, or the pixels can't be read (cross-origin taint).
+async function removeLogoBackground(src: string): Promise<{ src: string; cutout: boolean }> {
+  if (!src) return { src, cutout: false };
+  let image: HTMLImageElement;
+  try {
+    image = await loadCanvasImage(src);
+  } catch {
+    return { src, cutout: false };
+  }
+  const w = image.naturalWidth || image.width;
+  const h = image.naturalHeight || image.height;
+  if (!w || !h) return { src, cutout: false };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return { src, cutout: false };
+  ctx.drawImage(image, 0, 0, w, h);
+
+  let imageData: ImageData;
+  try {
+    imageData = ctx.getImageData(0, 0, w, h);
+  } catch {
+    return { src, cutout: false }; // canvas tainted by cross-origin image
+  }
+  const px = imageData.data;
+
+  // Already has meaningful transparency -> assume it's a clean cutout, leave it.
+  let transparent = 0;
+  for (let i = 3; i < px.length; i += 4) if (px[i] < 200) transparent += 1;
+  if (transparent > w * h * 0.05) return { src, cutout: true };
+
+  // Background color from the four corners; require them to agree (flat bg).
+  const cornerOffsets = [0, (w - 1) * 4, (h - 1) * w * 4, ((h - 1) * w + (w - 1)) * 4];
+  const corners = cornerOffsets.map((o) => [px[o], px[o + 1], px[o + 2]] as [number, number, number]);
+  const bg: [number, number, number] = [0, 1, 2].map((c) => Math.round(corners.reduce((s, k) => s + k[c], 0) / corners.length)) as [number, number, number];
+  const spread = Math.max(...corners.map((k) => colorDistance(k[0], k[1], k[2], bg)));
+  if (spread > 40) return { src, cutout: false }; // corners disagree -> not a flat background
+
+  const tolerance = 42;
+  let removedPixels = 0;
+  const visited = new Uint8Array(w * h);
+  const stack: number[] = [];
+  const consider = (x: number, y: number) => {
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const idx = y * w + x;
+    if (visited[idx]) return;
+    visited[idx] = 1;
+    const o = idx * 4;
+    if (colorDistance(px[o], px[o + 1], px[o + 2], bg) <= tolerance) {
+      if (px[o + 3] !== 0) removedPixels += 1;
+      px[o + 3] = 0;
+      stack.push(x, y);
+    }
+  };
+  for (let x = 0; x < w; x += 1) {
+    consider(x, 0);
+    consider(x, h - 1);
+  }
+  for (let y = 0; y < h; y += 1) {
+    consider(0, y);
+    consider(w - 1, y);
+  }
+  while (stack.length) {
+    const y = stack.pop() as number;
+    const x = stack.pop() as number;
+    consider(x + 1, y);
+    consider(x - 1, y);
+    consider(x, y + 1);
+    consider(x, y - 1);
+  }
+
+  if (removedPixels < w * h * 0.01) return { src, cutout: false };
+  ctx.putImageData(imageData, 0, 0);
+  return { src: canvas.toDataURL('image/png'), cutout: true };
 }
 
 type BriefFacts = {
@@ -799,7 +1638,7 @@ function ctaForObjective(lower: string) {
   return 'Get started';
 }
 
-function parseBrandColors(dna: BusinessDnaRow | null): BrandColor[] {
+function parseBrandColors(dna: BusinessDnaRow | ClientBusinessDnaRow | null): BrandColor[] {
   const raw = dna?.brand_colors as Json | undefined;
   if (!Array.isArray(raw)) return [];
   return raw
@@ -814,35 +1653,12 @@ function parseBrandColors(dna: BusinessDnaRow | null): BrandColor[] {
     .filter((item): item is BrandColor => Boolean(item));
 }
 
-function buildColorSwatches(brandColors: BrandColor[], baseAccent: string) {
-  const values = [...brandColors.map((color) => color.value), baseAccent, '#0C1A2E', '#2563EB', '#C8A24C', '#E11C6B', '#0F766E', '#F97316'];
-  const seen = new Set<string>();
-  return values
-    .map((value) => normalizeHex(value))
-    .filter((value): value is string => Boolean(value))
-    .filter((value) => {
-      if (seen.has(value)) return false;
-      seen.add(value);
-      return true;
-    })
-    .slice(0, 7);
-}
-
-function applyOverrides(palette: PosterPalette, accentColor: string, backgroundColor: string): PosterPalette {
-  const accent = normalizeHex(accentColor);
-  const bg = normalizeHex(backgroundColor);
-  return {
-    ...palette,
-    accent: accent || palette.accent,
-    onAccent: accent ? readableOn(accent) : palette.onAccent,
-    bg: bg || palette.bg,
-  };
-}
-
-function buildBusinessDnaPayload(dna: BusinessDnaRow | null) {
+function buildBusinessDnaPayload(dna: BusinessDnaRow | ClientBusinessDnaRow | null) {
   if (!dna) return null;
   return {
     websiteUrl: dna.website_url,
+    contactPhone: dna.contact_phone,
+    contactEmail: dna.contact_email,
     mission: dna.mission,
     positioning: dna.positioning,
     audience: dna.audience,
@@ -858,29 +1674,109 @@ async function createStorageSignedUrl(bucket: string, path: string) {
   return data?.signedUrl ?? '';
 }
 
-function normalizeHex(value: string) {
-  const match = value.trim().match(/^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
-  if (!match) return '';
-  const hex = match[1].length === 3 ? match[1].split('').map((char) => char + char).join('') : match[1];
-  return '#' + hex.toUpperCase();
-}
-
-function readableOn(hex: string) {
-  return luminance(hex) > 0.52 ? '#111827' : '#FFFFFF';
-}
-
-function luminance(hex: string) {
-  const h = hex.replace('#', '');
-  const rgb = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-  const values = rgb.map((value) => {
-    const scaled = value / 255;
-    return scaled <= 0.03928 ? scaled / 12.92 : Math.pow((scaled + 0.055) / 1.055, 2.4);
-  });
-  return 0.2126 * values[0] + 0.7152 * values[1] + 0.0722 * values[2];
-}
-
 function stringValue(value: unknown) {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function releaseProductImage(image: ProductImageInput | null) {
+  if (!image) return;
+  const urls = new Set([image.src, image.originalSrc]);
+  urls.forEach((url) => {
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  });
+}
+
+const POSTER_MEMORY_LIMIT = 12;
+
+type PosterMemoryEntry = {
+  at: string;
+  kind: 'request' | 'choice';
+  brief?: string;
+  objective?: string;
+  offerType?: string;
+  ctaInput?: string;
+  language?: PosterLanguage;
+  format?: PosterFormat;
+  posterCount?: number;
+  titles?: string[];
+  action?: string;
+  pickedTitle?: string;
+  pickedAngle?: string;
+  pickedHeadline?: string;
+};
+
+type PosterLearningContext = {
+  summary: string;
+  previousHeadlines: string[];
+  forbiddenHeadlines: string[];
+  pickedHeadlines: string[];
+  recentHeadlines: string[];
+  titles: string[];
+};
+
+function posterMemoryStorageKey(scope: string) {
+  return 'time2grow.posterStudio.memory.' + (scope || 'local');
+}
+
+function readPosterMemory(scope: string): PosterMemoryEntry[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(posterMemoryStorageKey(scope)) || '[]');
+    return Array.isArray(parsed) ? parsed.slice(0, POSTER_MEMORY_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePosterMemory(scope: string, entries: PosterMemoryEntry[]) {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(posterMemoryStorageKey(scope), JSON.stringify(entries.slice(0, POSTER_MEMORY_LIMIT)));
+}
+
+function rememberPosterRequest(scope: string, input: Omit<PosterMemoryEntry, 'at' | 'kind'>) {
+  const entry: PosterMemoryEntry = { at: new Date().toISOString(), kind: 'request', ...input };
+  writePosterMemory(scope, [entry, ...readPosterMemory(scope)]);
+}
+
+function rememberPosterChoice(scope: string, poster: AiPoster, action: string) {
+  const entry: PosterMemoryEntry = {
+    at: new Date().toISOString(),
+    kind: 'choice',
+    action,
+    pickedTitle: poster.title,
+    pickedAngle: poster.angle,
+    pickedHeadline: poster.copy.headline,
+  };
+  writePosterMemory(scope, [entry, ...readPosterMemory(scope)]);
+}
+
+function uniquePosterTexts(values: Array<string | undefined>) {
+  const seen = new Set<string>();
+  return values.map((value) => stringValue(value)).filter((value) => {
+    const key = normalizePosterHeadline(value);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function readPosterLearningContext(scope: string): PosterLearningContext {
+  const entries = readPosterMemory(scope);
+  const pickedHeadlines = uniquePosterTexts(entries.filter((entry) => entry.kind === 'choice').flatMap((entry) => [entry.pickedHeadline, entry.pickedTitle]));
+  const titles = uniquePosterTexts(entries.filter((entry) => entry.kind === 'request').flatMap((entry) => entry.titles ?? []));
+  const previousHeadlines = uniquePosterTexts([...pickedHeadlines, ...titles]).slice(0, 24);
+  const summary = entries.map((entry) => {
+    if (entry.kind === 'choice') return 'Preferred poster: ' + [entry.pickedHeadline, entry.pickedAngle, entry.action].filter(Boolean).join(' | ');
+    return 'Recent request: ' + [entry.brief, entry.objective, entry.offerType, entry.ctaInput, entry.language, entry.format, entry.titles?.join(', ')].filter(Boolean).join(' | ');
+  }).join('\n').slice(0, 2000);
+  return {
+    summary,
+    previousHeadlines,
+    forbiddenHeadlines: previousHeadlines,
+    pickedHeadlines,
+    recentHeadlines: titles,
+    titles,
+  };
 }
 
 function waitForPaint() {

@@ -4,6 +4,24 @@ time2grow is an AI growth workspace for businesses, agencies, creators, and loca
 
 The app is a React/Vite/TypeScript frontend backed by Supabase Auth, Postgres, Storage, Row Level Security, Edge Functions, and local n8n AI workflows.
 
+## Deploy to Vercel
+
+The frontend is ready to deploy from the repository root. The included `vercel.json` installs the workspace, runs `npm run build:web`, serves `apps/web/dist`, and keeps client-side routes working.
+
+Add these public environment variables in Vercel before deploying:
+
+```env
+VITE_APP_ENV=production
+VITE_APP_NAME=time2grow
+VITE_APP_URL=https://your-project.vercel.app
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+Do not add the local n8n URL to Vercel: a deployed browser cannot reach `localhost:5678`. When `VITE_N8N_POSTER_WEBHOOK_URL` is unset, the Poster page uses the existing Supabase `ai-handler` action instead. You can later set this variable to a public HTTPS n8n webhook if you still want n8n in production.
+
+Deploy the Supabase function and store `OPENAI_API_KEY` as a Supabase Function secret. Never put OpenAI keys, Supabase service-role keys, n8n credentials, or provider secrets in Vercel `VITE_` variables because those values are visible in the browser.
+
 ## Current Status
 
 This is an early production build, not a finished public SaaS launch yet. The core foundation is in place: authentication, organization/workspace data, Business DNA, Social Hub, media handling, Supabase migrations, Edge Functions, and the first Poster AI workflow.
@@ -22,9 +40,14 @@ Still needed before full public launch:
 - Business DNA: captures brand positioning, audience, website intelligence, colors, and logo.
 - Content Studio: creates platform-ready posts and video/ad scripts using saved Business DNA.
 - Poster Studio: editable poster canvas with logo, text, RGB palette, background controls, download, save, and Social Hub handoff.
-- Poster AI Studio: sends the brief, Business DNA, logo, palette, and preferences to n8n AI agents to generate a topic-specific poster background and editable copy.
+- Poster AI Studio: uses Supabase Edge Functions in hosted deployments, with optional n8n workflows for local or advanced automation.
 - Social Hub: connects handles and queues/publishes content to selected social, ads, and messaging channels.
 - Supabase backend: auth, storage, Edge Functions, database tables, RLS, and organization-scoped SaaS data.
+
+The product objective is expanding from generating marketing assets to running marketing work end to
+end — SOP-based tasks, AI proof verification, recurring operations, an AI review layer, and an
+executive dashboard. See [docs/product-vision.md](docs/product-vision.md) for the full vision and
+roadmap.
 
 ## Tech Stack
 

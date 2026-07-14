@@ -1,0 +1,28 @@
+{
+  "version": "5",
+  "remote": {
+    "https://esm.sh/@supabase/supabase-js@2.45.4": "1108d69216995335d057dbd15907caaf514a4d1ef082f097050573b9d589a57c"
+  },
+  "workspace": {
+    "members": {
+      "apps/web": {
+        "packageJson": {
+          "dependencies": [
+            "npm:@supabase/supabase-js@^2.45.4",
+            "npm:@types/node@^22.10.2",
+            "npm:@types/react-dom@^18.3.1",
+            "npm:@types/react@^18.3.12",
+            "npm:@vitejs/plugin-react@^6.0.3",
+            "npm:html-to-image@^1.11.13",
+            "npm:lucide-react@0.468",
+            "npm:react-dom@^18.3.1",
+            "npm:react-router-dom@^6.28.0",
+            "npm:react@^18.3.1",
+            "npm:typescript@^5.6.3",
+            "npm:vite@^8.1.3"
+          ]
+        }
+      }
+    }
+  }
+}

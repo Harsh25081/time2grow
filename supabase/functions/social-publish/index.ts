@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       .map((target) => target.distribution_handle_id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
     const handlesById = await loadHandles(supabase, handleIds);
-    const asset = await loadMediaAsset(supabase, postId);
+    const asset = await loadMediaAsset(supabase, post);
     const results = [];
 
     await supabase.from('social_posts').update({ status: 'publishing' }).eq('id', postId);
@@ -139,11 +139,28 @@ async function loadHandles(supabase: ReturnType<typeof serviceClient>, handleIds
   return handlesById;
 }
 
-async function loadMediaAsset(supabase: ReturnType<typeof serviceClient>, postId: string) {
+async function loadMediaAsset(supabase: ReturnType<typeof serviceClient>, post: Record<string, unknown>) {
+  const postId = stringValue(post.id);
+  if (postId) {
+    const { data, error } = await supabase
+      .from('social_media_assets')
+      .select('*')
+      .eq('social_post_id', postId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (data) return data;
+  }
+
+  const contentItemId = stringValue(post.content_item_id);
+  if (!contentItemId) return null;
+
   const { data, error } = await supabase
     .from('social_media_assets')
     .select('*')
-    .eq('social_post_id', postId)
+    .eq('content_item_id', contentItemId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();

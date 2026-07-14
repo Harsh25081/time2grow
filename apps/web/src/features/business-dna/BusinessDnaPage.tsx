@@ -1,15 +1,29 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { Dna, Globe, Loader2, Plus, Save, X } from 'lucide-react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { Dna, Globe, Image as ImageIcon, Loader2, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
+import { ClientBrandManager } from './ClientBrandManager';
+import { errorMessage, edgeFunctionErrorMessage } from './edgeError';
 import type { Database, Json } from '../../types/database';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 
 type ColorEntry = { label: string; value: string };
 
+type LogoState = {
+  storageBucket: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number | null;
+  altText: string;
+  previewUrl: string;
+};
+
 type FormState = {
   websiteUrl: string;
+  contactPhone: string;
+  contactEmail: string;
   keyMetric: string;
   mission: string;
   vision: string;
@@ -20,6 +34,8 @@ type FormState = {
   growthGoal: string;
   additionalNotes: string;
   colors: ColorEntry[];
+  logo: LogoState;
+  qr: LogoState;
 };
 
 const defaultColors: ColorEntry[] = [
@@ -27,8 +43,20 @@ const defaultColors: ColorEntry[] = [
   { label: 'Accent', value: '' },
 ];
 
+const emptyLogo: LogoState = {
+  storageBucket: '',
+  storagePath: '',
+  fileName: '',
+  mimeType: '',
+  sizeBytes: null,
+  altText: '',
+  previewUrl: '',
+};
+
 const emptyForm: FormState = {
   websiteUrl: '',
+  contactPhone: '',
+  contactEmail: '',
   keyMetric: '',
   mission: '',
   vision: '',
@@ -39,6 +67,22 @@ const emptyForm: FormState = {
   growthGoal: '',
   additionalNotes: '',
   colors: defaultColors,
+  logo: emptyLogo,
+  qr: emptyLogo,
+};
+
+const logoMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+const qrMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+const maxLogoBytes = 2 * 1024 * 1024;
+
+type ExtractedLogo = {
+  storageBucket: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  altText?: string;
+  imageUrl?: string;
 };
 
 type ExtractedDna = {
@@ -51,6 +95,7 @@ type ExtractedDna = {
   growthGoal: string;
   keyMetric: string;
   colors?: ColorEntry[];
+  logo?: ExtractedLogo;
 };
 export function BusinessDnaPage() {
   const { organization, user } = useAuth();
@@ -63,6 +108,8 @@ export function BusinessDnaPage() {
   const [extracting, setExtracting] = useState(false);
   const [extractMessage, setExtractMessage] = useState('');
   const [extractError, setExtractError] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -88,7 +135,16 @@ export function BusinessDnaPage() {
       }
 
       if (data) {
-        setForm(mapRowToForm(data));
+        const nextForm = mapRowToForm(data);
+        if (nextForm.logo.storageBucket && nextForm.logo.storagePath) {
+          nextForm.logo.previewUrl = await createLogoPreviewUrl(nextForm.logo.storageBucket, nextForm.logo.storagePath);
+        }
+        if (nextForm.qr.storageBucket && nextForm.qr.storagePath) {
+          nextForm.qr.previewUrl = await createLogoPreviewUrl(nextForm.qr.storageBucket, nextForm.qr.storagePath);
+        }
+
+        if (!active) return;
+        setForm(nextForm);
         setRecordId(data.id);
       }
 
@@ -121,11 +177,13 @@ export function BusinessDnaPage() {
   }
 
   async function handleFetchFromWebsite() {
-    if (!supabase || !organization?.id) return;
-
     const websiteUrl = form.websiteUrl.trim();
     if (!websiteUrl) {
       setExtractError('Enter a website URL first.');
+      return;
+    }
+    if (!supabase || !organization?.id) {
+      setExtractError('Sign in and select a workspace before fetching from a website.');
       return;
     }
 
@@ -144,6 +202,7 @@ export function BusinessDnaPage() {
       if (!dna) throw new Error('The AI did not return any details for that website.');
 
       const fetchedColors = extractFetchedColors(dna.colors);
+      const fetchedLogo = extractFetchedLogo(dna.logo);
       setForm((current) => ({
         ...current,
         mission: dna.mission || current.mission,
@@ -155,13 +214,132 @@ export function BusinessDnaPage() {
         growthGoal: dna.growthGoal || current.growthGoal,
         keyMetric: dna.keyMetric || current.keyMetric,
         colors: fetchedColors.length > 0 ? mergeFetchedColors(current.colors, fetchedColors) : current.colors,
+        logo: fetchedLogo ?? current.logo,
       }));
-      setExtractMessage('Pulled details and brand colors from the website. Review the fields below, edit anything, then save.');
+      setExtractMessage(fetchedLogo ? 'Pulled details, brand colors, and logo from the website. Review and save.' : 'Pulled details and brand colors from the website. Review and save.');
     } catch (fetchError) {
       setExtractError(errorMessage(fetchError, 'Could not fetch details from that website.'));
     } finally {
       setExtracting(false);
     }
+  }
+
+  async function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!supabase || !organization?.id || !user?.id) return;
+
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setMessage('');
+    setError('');
+
+    if (!logoMimeTypes.includes(file.type)) {
+      setError('Upload a PNG, JPG, WebP, or GIF logo.');
+      return;
+    }
+
+    if (file.size > maxLogoBytes) {
+      setError('Logo must be 2 MB or smaller.');
+      return;
+    }
+
+    setUploadingLogo(true);
+
+    try {
+      const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+      const storagePath = `${organization.id}/brand-assets/logo/${fileName}`;
+      const { error: uploadError } = await supabase.storage.from('post-media').upload(storagePath, file, {
+        cacheControl: '3600',
+        contentType: file.type,
+        upsert: false,
+      });
+
+      if (uploadError) throw uploadError;
+
+      const previewUrl = await createLogoPreviewUrl('post-media', storagePath);
+      setForm((current) => ({
+        ...current,
+        logo: {
+          storageBucket: 'post-media',
+          storagePath,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          altText: `${organization.name} logo`,
+          previewUrl,
+        },
+      }));
+      setMessage('Logo uploaded. Save Business DNA to keep it.');
+    } catch (uploadError) {
+      setError(errorMessage(uploadError, 'Could not upload logo.'));
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
+  function clearLogo() {
+    setForm((current) => ({ ...current, logo: emptyLogo }));
+    setMessage('Logo removed from Business DNA. Save to keep this change.');
+  }
+
+  async function handleQrUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!supabase || !organization?.id || !user?.id) return;
+
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setMessage('');
+    setError('');
+
+    if (!qrMimeTypes.includes(file.type)) {
+      setError('Upload a PNG, JPG, WebP, or SVG QR code.');
+      return;
+    }
+
+    if (file.size > maxLogoBytes) {
+      setError('QR code must be 2 MB or smaller.');
+      return;
+    }
+
+    setUploadingQr(true);
+
+    try {
+      const fileName = `${Date.now()}-${sanitizeFileName(file.name)}`;
+      const storagePath = `${organization.id}/brand-assets/qr/${fileName}`;
+      const { error: uploadError } = await supabase.storage.from('post-media').upload(storagePath, file, {
+        cacheControl: '3600',
+        contentType: file.type,
+        upsert: false,
+      });
+
+      if (uploadError) throw uploadError;
+
+      const previewUrl = await createLogoPreviewUrl('post-media', storagePath);
+      setForm((current) => ({
+        ...current,
+        qr: {
+          storageBucket: 'post-media',
+          storagePath,
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+          altText: `${organization.name} QR code`,
+          previewUrl,
+        },
+      }));
+      setMessage('QR code uploaded. Save Business DNA to keep it.');
+    } catch (uploadError) {
+      setError(errorMessage(uploadError, 'Could not upload QR code.'));
+    } finally {
+      setUploadingQr(false);
+    }
+  }
+
+  function clearQr() {
+    setForm((current) => ({ ...current, qr: emptyLogo }));
+    setMessage('QR code removed from Business DNA. Save to keep this change.');
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -176,6 +354,8 @@ export function BusinessDnaPage() {
       const payload = {
         org_id: organization.id,
         website_url: form.websiteUrl.trim() || null,
+        contact_phone: form.contactPhone.trim() || null,
+        contact_email: form.contactEmail.trim() || null,
         key_metric: form.keyMetric.trim() || null,
         mission: form.mission.trim() || null,
         vision: form.vision.trim() || null,
@@ -188,6 +368,18 @@ export function BusinessDnaPage() {
         brand_colors: form.colors
           .map((color) => ({ label: color.label.trim(), value: color.value.trim() }))
           .filter((color) => color.label || color.value) satisfies Json,
+        logo_storage_bucket: form.logo.storageBucket || null,
+        logo_storage_path: form.logo.storagePath || null,
+        logo_file_name: form.logo.fileName || null,
+        logo_mime_type: form.logo.mimeType || null,
+        logo_size_bytes: form.logo.sizeBytes,
+        logo_alt_text: form.logo.altText || null,
+        qr_storage_bucket: form.qr.storageBucket || null,
+        qr_storage_path: form.qr.storagePath || null,
+        qr_file_name: form.qr.fileName || null,
+        qr_mime_type: form.qr.mimeType || null,
+        qr_size_bytes: form.qr.sizeBytes,
+        qr_alt_text: form.qr.altText || null,
         created_by: user.id,
       };
 
@@ -207,6 +399,9 @@ export function BusinessDnaPage() {
       setSaving(false);
     }
   }
+
+  const hasLogo = Boolean(form.logo.storagePath || form.logo.previewUrl);
+  const hasQr = Boolean(form.qr.storagePath || form.qr.previewUrl);
 
   return (
     <div className="page-stack">
@@ -245,10 +440,63 @@ export function BusinessDnaPage() {
               </div>
             </label>
 
+            <div className="poster-field-row">
+              <label>
+                <span>Contact phone</span>
+                <input value={form.contactPhone} onChange={(event) => updateField('contactPhone', event.target.value)} placeholder="Example: +91 92769 69696" />
+              </label>
+              <label>
+                <span>Contact email</span>
+                <input value={form.contactEmail} onChange={(event) => updateField('contactEmail', event.target.value)} placeholder="Example: hello@yourbusiness.com" />
+              </label>
+            </div>
+
             <label>
               <span>Key metric</span>
               <input value={form.keyMetric} onChange={(event) => updateField('keyMetric', event.target.value)} placeholder="Example: Monthly recurring revenue" />
             </label>
+
+            <div className="draft-body-field dna-logo-section">
+              <span>Logo</span>
+              <div className="dna-logo-field">
+                <div className="dna-logo-preview">
+                  {form.logo.previewUrl ? <img src={form.logo.previewUrl} alt={form.logo.altText || 'Business logo'} /> : <ImageIcon size={30} />}
+                </div>
+                <div className="dna-logo-actions">
+                  <label className="icon-text-button dna-logo-upload">
+                    {uploadingLogo ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
+                    <span>{uploadingLogo ? 'Uploading' : 'Upload logo'}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleLogoUpload} disabled={uploadingLogo} />
+                  </label>
+                  <button type="button" className="icon-text-button" onClick={clearLogo} disabled={!hasLogo || uploadingLogo}>
+                    <Trash2 size={16} />
+                    <span>Remove</span>
+                  </button>
+                  <span className="dna-logo-meta">{form.logo.fileName || 'No logo selected'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="draft-body-field dna-logo-section">
+              <span>QR code (optional)</span>
+              <div className="dna-logo-field">
+                <div className="dna-logo-preview">
+                  {form.qr.previewUrl ? <img src={form.qr.previewUrl} alt={form.qr.altText || 'Business QR code'} /> : <ImageIcon size={30} />}
+                </div>
+                <div className="dna-logo-actions">
+                  <label className="icon-text-button dna-logo-upload">
+                    {uploadingQr ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
+                    <span>{uploadingQr ? 'Uploading' : 'Upload QR code'}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleQrUpload} disabled={uploadingQr} />
+                  </label>
+                  <button type="button" className="icon-text-button" onClick={clearQr} disabled={!hasQr || uploadingQr}>
+                    <Trash2 size={16} />
+                    <span>Remove</span>
+                  </button>
+                  <span className="dna-logo-meta">{form.qr.fileName || 'No QR code selected'}</span>
+                </div>
+              </div>
+            </div>
 
             {extractMessage ? <p className="form-message success draft-body-field">{extractMessage}</p> : null}
             {extractError ? <p className="form-message error draft-body-field">{extractError}</p> : null}
@@ -322,6 +570,10 @@ export function BusinessDnaPage() {
           </form>
         </section>
       )}
+
+      {organization?.org_type === 'agency' && organization?.id && user?.id ? (
+        <ClientBrandManager orgId={organization.id} userId={user.id} />
+      ) : null}
     </div>
   );
 }
@@ -340,6 +592,24 @@ function extractFetchedColors(value: unknown) {
     })
     .filter((entry): entry is ColorEntry => Boolean(entry))
     .slice(0, 8);
+}
+
+function extractFetchedLogo(value: unknown): LogoState | null {
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const storageBucket = stringValue(record.storageBucket);
+  const storagePath = stringValue(record.storagePath);
+  if (!storageBucket || !storagePath) return null;
+
+  return {
+    storageBucket,
+    storagePath,
+    fileName: stringValue(record.fileName) || 'website-logo',
+    mimeType: stringValue(record.mimeType),
+    sizeBytes: typeof record.sizeBytes === 'number' ? record.sizeBytes : null,
+    altText: stringValue(record.altText) || 'Business logo',
+    previewUrl: stringValue(record.imageUrl),
+  };
 }
 
 function mergeFetchedColors(current: ColorEntry[], fetched: ColorEntry[]) {
@@ -366,6 +636,8 @@ function mapRowToForm(row: BusinessDnaRow): FormState {
 
   return {
     websiteUrl: row.website_url ?? '',
+    contactPhone: row.contact_phone ?? '',
+    contactEmail: row.contact_email ?? '',
     keyMetric: row.key_metric ?? '',
     mission: row.mission ?? '',
     vision: row.vision ?? '',
@@ -376,53 +648,38 @@ function mapRowToForm(row: BusinessDnaRow): FormState {
     growthGoal: row.growth_goal ?? '',
     additionalNotes: row.additional_notes ?? '',
     colors: colors.length > 0 ? colors : defaultColors,
+    logo: {
+      storageBucket: row.logo_storage_bucket ?? '',
+      storagePath: row.logo_storage_path ?? '',
+      fileName: row.logo_file_name ?? '',
+      mimeType: row.logo_mime_type ?? '',
+      sizeBytes: row.logo_size_bytes ?? null,
+      altText: row.logo_alt_text ?? '',
+      previewUrl: '',
+    },
+    qr: {
+      storageBucket: row.qr_storage_bucket ?? '',
+      storagePath: row.qr_storage_path ?? '',
+      fileName: row.qr_file_name ?? '',
+      mimeType: row.qr_mime_type ?? '',
+      sizeBytes: row.qr_size_bytes ?? null,
+      altText: row.qr_alt_text ?? '',
+      previewUrl: '',
+    },
   };
 }
 
-function errorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const parts = [record.message, record.details, record.hint, record.code]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-    if (parts.length > 0) return parts.join(' - ');
-  }
-
-  return fallback;
+async function createLogoPreviewUrl(bucket: string, path: string) {
+  if (!supabase || !bucket || !path) return '';
+  const { data } = await supabase.storage.from(bucket).createSignedUrl(path, 60 * 60 * 24 * 7);
+  return data?.signedUrl ?? '';
 }
 
-async function edgeFunctionErrorMessage(error: unknown, functionName: string) {
-  const response = edgeFunctionResponse(error);
-  if (response) {
-    const detail = await response
-      .clone()
-      .json()
-      .then((body) => {
-        if (body && typeof body === 'object' && typeof body.error === 'string') return body.error;
-        if (body && typeof body === 'object' && typeof body.message === 'string') return body.message;
-        return '';
-      })
-      .catch(() => response.clone().text().catch(() => ''));
-
-    if (detail.trim()) return detail.trim();
-  }
-
-  const message = errorMessage(error, '');
-  const lowerMessage = message.toLowerCase();
-  if (lowerMessage.includes('failed to send a request to the edge function') || lowerMessage.includes('failed to fetch')) {
-    return `Could not reach the ${functionName} Edge Function. Deploy ${functionName} in Supabase Edge Functions for this project, then refresh and try again.`;
-  }
-
-  if (lowerMessage.includes('edge function returned a non-2xx status code')) {
-    return `${functionName} returned an error. Check the Supabase Edge Function logs for the exact provider or secret issue.`;
-  }
-
-  return message || `Could not call the ${functionName} Edge Function.`;
+function sanitizeFileName(value: string) {
+  const cleaned = value.toLowerCase().replace(/[^a-z0-9.]+/g, '-').replace(/^-+|-+$/g, '');
+  return cleaned || 'logo.png';
 }
 
-function edgeFunctionResponse(error: unknown) {
-  if (!error || typeof error !== 'object') return null;
-  const context = (error as Record<string, unknown>).context;
-  return context instanceof Response ? context : null;
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value.trim() : '';
 }

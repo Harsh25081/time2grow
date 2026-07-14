@@ -29,6 +29,7 @@ export function AuthPage() {
   const { configured, session, passwordRecovery, clearPasswordRecovery } = useAuth();
   const [mode, setMode] = useState<AuthMode>('signin');
   const [fullName, setFullName] = useState('');
+  const [accountType, setAccountType] = useState<'solo' | 'agency'>('solo');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,6 +89,7 @@ export function AuthPage() {
           options: {
             data: {
               full_name: fullName,
+              account_type: accountType,
             },
           },
         });
@@ -176,6 +178,37 @@ export function AuthPage() {
                   onChange={(event) => setFullName(event.target.value)}
                   placeholder="Your name"
                 />
+              </label>
+            ) : null}
+
+            {mode === 'signup' ? (
+              <label>
+                <span>Account type</span>
+                <div className="segmented-control" role="radiogroup" aria-label="Account type">
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={accountType === 'solo'}
+                    className={accountType === 'solo' ? 'is-active' : ''}
+                    onClick={() => setAccountType('solo')}
+                  >
+                    Single business / creator
+                  </button>
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={accountType === 'agency'}
+                    className={accountType === 'agency' ? 'is-active' : ''}
+                    onClick={() => setAccountType('agency')}
+                  >
+                    Agency (multiple clients)
+                  </button>
+                </div>
+                <small className="field-hint">
+                  {accountType === 'agency'
+                    ? 'Manage a separate Business DNA per client and pick one when creating content.'
+                    : 'One Business DNA for your own brand. You can switch to agency later.'}
+                </small>
               </label>
             ) : null}
 

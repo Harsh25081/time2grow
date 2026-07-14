@@ -1,0 +1,11 @@
+.agents/
+.codex/
+docs/
+n8n/
+supabase/
+tests/
+AUDIT_REPORT.md
+*.log
+.env*
+!.env.example
+!.env.full-saas.example

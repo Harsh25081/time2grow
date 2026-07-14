@@ -1,61 +1,35 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BadgeCheck,
   CheckSquare,
   Clock3,
   FileUp,
-  Megaphone,
-  MessageCircle,
-  PlaySquare,
-  Plus,
-  RefreshCw,
   Send,
-  Share2,
-  Smartphone,
   Square,
-  Trash2,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
-import type { Database, Json } from '../../types/database';
+import type { Database } from '../../types/database';
+import {
+  channels,
+  edgeFunctionErrorMessage,
+  errorMessage,
+  mapRowToHandle,
+  normalizeConnectionsResponse,
+  seedHandles,
+  statusLabel,
+  type ConnectionStatus,
+  type Handle,
+  type Provider,
+} from './shared';
 
-type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
-type HandleType = 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
-type HandleStatus = 'ready' | 'review' | 'needs_setup';
 type PostStatus = 'draft' | 'queued' | 'publishing' | 'published' | 'partial_failed' | 'failed' | 'cancelled';
-type DistributionHandleRow = Database['public']['Tables']['distribution_handles']['Row'];
 type SocialPostRow = Database['public']['Tables']['social_posts']['Row'];
 type PublishTargetInsert = Database['public']['Tables']['publish_targets']['Insert'];
 type MediaAssetInsert = Database['public']['Tables']['social_media_assets']['Insert'];
 type CampaignRow = Database['public']['Tables']['campaigns']['Row'];
 type ContentItemRow = Database['public']['Tables']['content_items']['Row'];
-
-type Channel = {
-  provider: Provider;
-  name: string;
-  status: string;
-  mode: string;
-  accent: string;
-  icon: typeof Share2;
-};
-
-type Handle = {
-  id: string;
-  provider: Provider;
-  label: string;
-  detail: string;
-  type: string;
-  status: HandleStatus;
-  persisted: boolean;
-};
-
-type AddHandleForm = {
-  provider: Provider;
-  label: string;
-  externalId: string;
-  status: HandleStatus;
-};
 
 type DraftForm = {
   title: string;
@@ -85,66 +59,7 @@ type PublishResult = {
   }>;
 };
 
-type ConnectionStatus = {
-  provider: Provider;
-  status: 'connected' | 'ready_to_connect' | 'needs_setup';
-  authMode: 'oauth' | 'server_token' | 'ads_setup';
-  connectable: boolean;
-  secretsConfigured: boolean;
-  handleCount: number;
-  displayName: string | null;
-  tokenStatus: string | null;
-  lastSyncAt: string | null;
-};
-
-type ConnectionsResponse = {
-  connections?: ConnectionStatus[];
-};
-
-const providerMeta: Record<Provider, { handleType: HandleType; type: string; detail: string; externalLabel: string }> = {
-  facebook: { handleType: 'facebook_page', type: 'Page', detail: 'Facebook Page', externalLabel: 'Facebook Page ID' },
-  instagram: { handleType: 'instagram_business', type: 'IG', detail: 'Instagram Business', externalLabel: 'Instagram Business Account ID' },
-  linkedin: { handleType: 'linkedin_page', type: 'LI', detail: 'LinkedIn Page', externalLabel: 'LinkedIn Page ID' },
-  youtube: { handleType: 'youtube_channel', type: 'YT', detail: 'YouTube Channel', externalLabel: 'YouTube Channel ID' },
-  google_ads: { handleType: 'google_ads_customer', type: 'Ads', detail: 'Google Ads Customer', externalLabel: 'Google Ads Customer ID' },
-  whatsapp: { handleType: 'whatsapp_phone_number', type: 'WA', detail: 'WhatsApp recipient', externalLabel: 'Recipient phone number' },
-  slack: { handleType: 'slack_channel', type: 'Slack', detail: 'Slack Channel', externalLabel: 'Slack Channel ID' },
-  telegram: { handleType: 'telegram_channel', type: 'TG', detail: 'Telegram Channel', externalLabel: 'Telegram Channel ID' },
-};
-
 const mediaAccept = 'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
-
-const channels: Channel[] = [
-  { provider: 'facebook', name: 'Facebook Pages', status: 'OAuth required', mode: 'Feed posts, reels later', accent: 'blue', icon: Share2 },
-  { provider: 'instagram', name: 'Instagram Business', status: 'App review required', mode: 'Reels, images, carousels', accent: 'pink', icon: Smartphone },
-  { provider: 'linkedin', name: 'LinkedIn Pages', status: 'OAuth required', mode: 'Company and brand posts', accent: 'neutral', icon: Share2 },
-  { provider: 'youtube', name: 'YouTube Channels', status: 'Upload audit needed', mode: 'Videos and Shorts', accent: 'red', icon: PlaySquare },
-  { provider: 'google_ads', name: 'Google Ads', status: 'Developer token required', mode: 'Campaign builder required', accent: 'green', icon: Megaphone },
-  { provider: 'whatsapp', name: 'WhatsApp Business', status: 'Template rules apply', mode: 'Opt-in messages', accent: 'teal', icon: MessageCircle },
-  { provider: 'slack', name: 'Slack Channels', status: 'Bot token required', mode: 'Workspace channels', accent: 'neutral', icon: MessageCircle },
-  { provider: 'telegram', name: 'Telegram Channels', status: 'Bot token required', mode: 'Channel messages', accent: 'neutral', icon: Send },
-];
-
-const seedHandles: Handle[] = [
-  { id: 'seed-fb-main', provider: 'facebook', label: 'Ad96 Main Page', detail: 'Facebook Page', type: 'Page', status: 'ready', persisted: false },
-  { id: 'seed-fb-local', provider: 'facebook', label: 'Local Offers Page', detail: 'Facebook Page', type: 'Page', status: 'ready', persisted: false },
-  { id: 'seed-fb-growth', provider: 'facebook', label: 'Growth Tips Page', detail: 'Facebook Page', type: 'Page', status: 'review', persisted: false },
-  { id: 'seed-ig-main', provider: 'instagram', label: '@ad96growth', detail: 'Instagram Business', type: 'IG', status: 'ready', persisted: false },
-  { id: 'seed-ig-reels', provider: 'instagram', label: '@ad96reels', detail: 'Instagram Business', type: 'IG', status: 'ready', persisted: false },
-  { id: 'seed-ig-offers', provider: 'instagram', label: '@localofferhub', detail: 'Instagram Business', type: 'IG', status: 'needs_setup', persisted: false },
-  { id: 'seed-li-main', provider: 'linkedin', label: 'Ad96 Company Page', detail: 'LinkedIn Page', type: 'LI', status: 'ready', persisted: false },
-  { id: 'seed-li-founder', provider: 'linkedin', label: 'Founder Updates', detail: 'LinkedIn Page', type: 'LI', status: 'review', persisted: false },
-  { id: 'seed-yt-main', provider: 'youtube', label: 'Ad96 Marketing', detail: 'YouTube Channel', type: 'YT', status: 'ready', persisted: false },
-  { id: 'seed-yt-shorts', provider: 'youtube', label: 'Ad96 Shorts', detail: 'YouTube Channel', type: 'YT', status: 'review', persisted: false },
-  { id: 'seed-ads-main', provider: 'google_ads', label: 'Ad96 Ads Account', detail: 'Customer ID ending 2194', type: 'Ads', status: 'ready', persisted: false },
-  { id: 'seed-ads-local', provider: 'google_ads', label: 'Local Campaigns MCC', detail: 'Manager account', type: 'Ads', status: 'needs_setup', persisted: false },
-  { id: 'seed-wa-main', provider: 'whatsapp', label: 'Ad96 Support Number', detail: 'WhatsApp Business', type: 'WA', status: 'ready', persisted: false },
-  { id: 'seed-wa-sales', provider: 'whatsapp', label: 'Sales Broadcast Number', detail: 'WhatsApp Business', type: 'WA', status: 'review', persisted: false },
-  { id: 'seed-slack-growth', provider: 'slack', label: '#growth-updates', detail: 'Slack Channel', type: 'Slack', status: 'ready', persisted: false },
-  { id: 'seed-slack-sales', provider: 'slack', label: '#sales-alerts', detail: 'Slack Channel', type: 'Slack', status: 'review', persisted: false },
-  { id: 'seed-tg-main', provider: 'telegram', label: 'Ad96 Telegram Channel', detail: 'Telegram Channel', type: 'TG', status: 'ready', persisted: false },
-  { id: 'seed-tg-offers', provider: 'telegram', label: 'Offer Broadcast Channel', detail: 'Telegram Channel', type: 'TG', status: 'needs_setup', persisted: false },
-];
 
 const liveRequirements = [
   'Connected provider account or server token',
@@ -159,7 +74,6 @@ export function SocialHubPage() {
   const { organization, user } = useAuth();
   const [accountHandles, setAccountHandles] = useState<Handle[]>(initialHandles);
   const [selectedHandleIds, setSelectedHandleIds] = useState<Set<string>>(defaultSelected);
-  const [form, setForm] = useState<AddHandleForm>({ provider: 'facebook', label: '', externalId: '', status: 'ready' });
   const [draft, setDraft] = useState<DraftForm>({
     title: 'Launch offer post',
     body: 'Write the message here. Live publishing will stay gated until OAuth and provider review are complete.',
@@ -172,17 +86,10 @@ export function SocialHubPage() {
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [contentItems, setContentItems] = useState<ContentItemRow[]>([]);
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
-  const [connectionsLoading, setConnectionsLoading] = useState(false);
-  const [connectionMessage, setConnectionMessage] = useState('');
-  const [connectionError, setConnectionError] = useState('');
-  const [connectingProvider, setConnectingProvider] = useState<Provider | null>(null);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [selectedContentItemId, setSelectedContentItemId] = useState('');
-  const [formMessage, setFormMessage] = useState('');
-  const [formError, setFormError] = useState('');
   const [queueMessage, setQueueMessage] = useState('');
   const [queueError, setQueueError] = useState('');
-  const [saving, setSaving] = useState(false);
   const [queueing, setQueueing] = useState(false);
 
   useEffect(() => {
@@ -197,28 +104,6 @@ export function SocialHubPage() {
     return () => URL.revokeObjectURL(nextPreviewUrl);
   }, [selectedFile]);
 
-  async function loadConnectionStatus() {
-    if (!supabase || !organization?.id) {
-      setConnections([]);
-      return;
-    }
-
-    setConnectionsLoading(true);
-    setConnectionError('');
-
-    try {
-      const { data, error } = await supabase.functions.invoke('social-connections-status', {
-        body: { orgId: organization.id },
-      });
-
-      if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-publish'));
-      setConnections(normalizeConnectionsResponse(data).connections ?? []);
-    } catch (error) {
-      setConnectionError(errorMessage(error, 'Could not load connection status.'));
-    } finally {
-      setConnectionsLoading(false);
-    }
-  }
   useEffect(() => {
     let active = true;
 
@@ -235,13 +120,29 @@ export function SocialHubPage() {
       if (!active) return;
 
       if (error) {
-        setFormError(errorMessage(error, 'Run the social distribution migration before loading saved handles.'));
+        setQueueError(errorMessage(error, 'Run the social distribution migration before loading saved handles.'));
         return;
       }
 
       const savedHandles = (data ?? []).map(mapRowToHandle);
       setAccountHandles(savedHandles);
       setSelectedHandleIds(new Set(savedHandles.filter((handle) => handle.status === 'ready').map((handle) => handle.id)));
+    }
+
+    async function loadConnections() {
+      if (!supabase || !organization?.id) return;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('social-connections-status', {
+          body: { orgId: organization.id },
+        });
+
+        if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-connections-status'));
+        if (!active) return;
+        setConnections(normalizeConnectionsResponse(data).connections ?? []);
+      } catch {
+        // Connection status is advisory here; the Connections page is the source of truth for setup errors.
+      }
     }
 
     async function loadSources() {
@@ -280,9 +181,9 @@ export function SocialHubPage() {
     }
 
     loadHandles();
+    loadConnections();
     loadSources();
     loadQueueRuns();
-    loadConnectionStatus();
 
     return () => {
       active = false;
@@ -305,7 +206,6 @@ export function SocialHubPage() {
   );
 
   const hasDemoTargets = selectedHandles.some((handle) => !handle.persisted);
-  const liveHandleCount = accountHandles.filter((handle) => handle.persisted).length;
 
   const connectionByProvider = useMemo(
     () => new Map(connections.map((connection) => [connection.provider, connection])),
@@ -354,123 +254,6 @@ export function SocialHubPage() {
   function clearSource() {
     setSelectedCampaignId('');
     setSelectedContentItemId('');
-  }
-
-  async function handleConnectProvider(provider: Provider) {
-    setConnectionMessage('');
-    setConnectionError('');
-
-    const status = connectionByProvider.get(provider);
-    if (!supabase || !organization?.id) {
-      setConnectionError('Connect Supabase before adding live channels.');
-      return;
-    }
-
-    if (!status?.secretsConfigured) {
-      setConnectionError(`${channelName(provider)} needs server setup before users can connect it.`);
-      return;
-    }
-
-    if (!status.connectable) {
-      setForm((current) => ({ ...current, provider }));
-      setConnectionMessage(`${channelName(provider)} is configured by server token. Add the destination handle below, then publish.`);
-      return;
-    }
-
-    setConnectingProvider(provider);
-
-    try {
-      const { data, error } = await supabase.functions.invoke('social-auth-start', {
-        body: {
-          provider,
-          orgId: organization.id,
-          returnTo: `${window.location.origin}/social`,
-        },
-      });
-
-      if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-publish'));
-      const authUrl = getAuthUrl(data);
-      if (!authUrl) throw new Error('Connection URL was not returned.');
-      window.location.assign(authUrl);
-    } catch (error) {
-      setConnectionError(errorMessage(error, `Could not connect ${channelName(provider)}.`));
-      setConnectingProvider(null);
-    }
-  }
-  async function handleAddHandle(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setFormMessage('');
-    setFormError('');
-
-    const label = form.label.trim();
-    const externalId = form.externalId.trim();
-    if (!label) {
-      setFormError('Enter a handle name.');
-      return;
-    }
-
-    const meta = providerMeta[form.provider];
-    setSaving(true);
-
-    try {
-      let nextHandle: Handle;
-
-      if (supabase && organization?.id && user?.id) {
-        const { data, error } = await supabase
-          .from('distribution_handles')
-          .insert({
-            org_id: organization.id,
-            provider: form.provider,
-            handle_type: meta.handleType,
-            display_name: label,
-            external_handle_id: externalId || null,
-            metadata: { ui_status: form.status, source: 'manual' } satisfies Json,
-            created_by: user.id,
-          })
-          .select('*')
-          .single();
-
-        if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-publish'));
-
-        nextHandle = mapRowToHandle(data);
-        setFormMessage('Handle added to this workspace.');
-      } else {
-        nextHandle = createLocalHandle(form.provider, label, externalId, form.status);
-        setFormMessage('Handle added locally. Connect Supabase to save it to the workspace.');
-      }
-
-      setAccountHandles((current) => [nextHandle, ...current]);
-      setSelectedHandleIds((current) => new Set(current).add(nextHandle.id));
-      setForm({ provider: form.provider, label: '', externalId: '', status: 'ready' });
-      loadConnectionStatus();
-    } catch (error) {
-      setFormError(errorMessage(error, 'Could not add handle.'));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDeleteHandle(handle: Handle) {
-    if (!window.confirm(`Remove "${handle.label}"? This can't be undone.`)) return;
-
-    setFormMessage('');
-    setFormError('');
-
-    if (supabase && handle.persisted) {
-      const { error } = await supabase.from('distribution_handles').delete().eq('id', handle.id);
-      if (error) {
-        setFormError(errorMessage(error, 'Could not remove handle.'));
-        return;
-      }
-    }
-
-    setAccountHandles((current) => current.filter((item) => item.id !== handle.id));
-    setSelectedHandleIds((current) => {
-      const next = new Set(current);
-      next.delete(handle.id);
-      return next;
-    });
-    setFormMessage('Handle removed.');
   }
 
   async function handleQueueSelected() {
@@ -607,6 +390,7 @@ export function SocialHubPage() {
     if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-publish'));
     return normalizePublishResult(data);
   }
+
   function toggleHandle(handleId: string) {
     setSelectedHandleIds((current) => {
       const next = new Set(current);
@@ -646,52 +430,8 @@ export function SocialHubPage() {
           <p className="eyebrow">Distribution</p>
           <h2>Social Hub</h2>
         </div>
-        <span className={liveHandleCount > 0 ? 'status-pill success' : 'status-pill warning'}>{liveHandleCount > 0 ? 'Live handles' : 'Setup needed'}</span>
+        <span className={selectedHandles.length > 0 ? 'status-pill success' : 'status-pill warning'}>{selectedHandles.length > 0 ? `${selectedHandles.length} selected` : 'Select handles'}</span>
       </header>
-
-      <section className="connections-panel" aria-label="Connect publishing channels">
-        <div className="section-heading connections-heading">
-          <div>
-            <p className="eyebrow">Connections</p>
-            <h3>Accounts</h3>
-          </div>
-          <button type="button" className="icon-text-button" onClick={loadConnectionStatus} disabled={connectionsLoading}>
-            <RefreshCw size={16} className={connectionsLoading ? 'spin' : ''} />
-            <span>Refresh</span>
-          </button>
-        </div>
-
-        <div className="connections-grid">
-          {channels.map((channel) => {
-            const connection = connectionByProvider.get(channel.provider);
-            const Icon = channel.icon;
-            const connected = connection?.status === 'connected';
-            const connecting = connectingProvider === channel.provider;
-
-            return (
-              <article className={`connection-card ${connected ? 'is-connected' : ''}`} key={channel.provider}>
-                <div className="connection-card__top">
-                  <span className="channel-icon"><Icon size={20} /></span>
-                  <span className={`connection-status ${connectionBadgeClass(connection)}`}>{connectionStatusText(connection)}</span>
-                </div>
-                <div>
-                  <h4>{channel.name}</h4>
-                  <p>{connectionHelperText(connection, channel.provider)}</p>
-                </div>
-                <div className="connection-card__bottom">
-                  <span>{connection?.handleCount ?? accountHandles.filter((handle) => handle.provider === channel.provider && handle.persisted).length} handles</span>
-                  <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={connecting || connectionsLoading}>
-                    {connecting ? 'Connecting' : connectionActionText(connection)}
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-        </div>
-
-        {connectionMessage ? <p className="form-message success">{connectionMessage}</p> : null}
-        {connectionError ? <p className="form-message error">{connectionError}</p> : null}
-      </section>
 
       <section className="source-panel" aria-label="Select source from content or campaign">
         <div>
@@ -763,46 +503,9 @@ export function SocialHubPage() {
         </div>
 
         {Boolean(supabase) && hasDemoTargets ? <p className="form-message warning">Only saved handles with real platform IDs can publish.</p> : null}
-        {Boolean(supabase) && hasUnlinkedOAuthTargets ? <p className="form-message warning">A selected handle isn&apos;t backed by a real connection yet. Click Connect for that channel above before publishing &#x2014; adding a handle manually doesn&apos;t link an account.</p> : null}
+        {Boolean(supabase) && hasUnlinkedOAuthTargets ? <p className="form-message warning">A selected handle isn&apos;t backed by a real connection yet. Connect that channel on the Connections page before publishing.</p> : null}
         {queueMessage ? <p className="form-message success">{queueMessage}</p> : null}
         {queueError ? <p className="form-message error">{queueError}</p> : null}
-      </section>
-
-      <section className="add-handle-panel" aria-label="Add handle to account">
-        <div>
-          <p className="eyebrow">Account handles</p>
-          <h3>Add manual handle</h3>
-        </div>
-        <form className="add-handle-form" onSubmit={handleAddHandle}>
-          <label>
-            <span>Platform</span>
-            <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as Provider }))}>
-              {channels.map((channel) => <option key={channel.provider} value={channel.provider}>{channel.name}</option>)}
-            </select>
-          </label>
-          <label>
-            <span>Handle name</span>
-            <input value={form.label} onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))} placeholder="Example: Brand Main Page" />
-          </label>
-          <label>
-            <span>{providerMeta[form.provider].externalLabel}</span>
-            <input value={form.externalId} onChange={(event) => setForm((current) => ({ ...current, externalId: event.target.value }))} placeholder={providerHandlePlaceholder(form.provider)} />
-          </label>
-          <label>
-            <span>Status</span>
-            <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as HandleStatus }))}>
-              <option value="ready">Ready</option>
-              <option value="review">Review</option>
-              <option value="needs_setup">Needs setup</option>
-            </select>
-          </label>
-          <button className="primary-action add-handle-submit" type="submit" disabled={saving}>
-            <Plus size={18} />
-            <span>{saving ? 'Adding' : 'Add handle'}</span>
-          </button>
-        </form>
-        {formMessage ? <p className="form-message success">{formMessage}</p> : null}
-        {formError ? <p className="form-message error">{formError}</p> : null}
       </section>
 
       <section className="target-toolbar" aria-label="Handle selection shortcuts">
@@ -833,24 +536,21 @@ export function SocialHubPage() {
                 </div>
               </div>
               <div className="handle-list">
-                {channel.handles.map((handle) => {
+                {channel.handles.length === 0 ? (
+                  <p className="handle-list-empty">No handles yet. Add one on the Connections page.</p>
+                ) : channel.handles.map((handle) => {
                   const selected = selectedHandleIds.has(handle.id);
                   const CheckIcon = selected ? CheckSquare : Square;
                   const unlinked = needsOAuthConnection(handle);
                   return (
-                    <div className={`handle-row ${selected ? 'is-selected' : ''}`} key={handle.id}>
-                      <button className="handle-row__select" type="button" onClick={() => toggleHandle(handle.id)} aria-pressed={selected}>
-                        <CheckIcon size={19} />
-                        <div>
-                          <strong>{handle.label}</strong>
-                          <span>{handle.detail}{handle.persisted ? ' - saved' : ''}</span>
-                        </div>
-                        <span className={`handle-status ${unlinked ? 'needs_setup' : handle.status}`}>{unlinked ? 'Connect first' : statusLabel(handle.status)}</span>
-                      </button>
-                      <button type="button" className="icon-button" aria-label={`Remove ${handle.label}`} onClick={() => handleDeleteHandle(handle)}>
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
+                    <button className={`handle-row handle-row--select ${selected ? 'is-selected' : ''}`} type="button" key={handle.id} onClick={() => toggleHandle(handle.id)} aria-pressed={selected}>
+                      <CheckIcon size={19} />
+                      <div>
+                        <strong>{handle.label}</strong>
+                        <span>{handle.detail}{handle.persisted ? ' - saved' : ''}</span>
+                      </div>
+                      <span className={`handle-status ${unlinked ? 'needs_setup' : handle.status}`}>{unlinked ? 'Connect first' : statusLabel(handle.status)}</span>
+                    </button>
                   );
                 })}
               </div>
@@ -948,49 +648,6 @@ async function uploadMediaAsset({ orgId, userId, postId, file }: { orgId: string
   if (assetError) throw new Error(errorMessage(assetError, 'Could not save media asset.'));
 }
 
-async function edgeFunctionErrorMessage(error: unknown, functionName: string) {
-  const response = edgeFunctionResponse(error);
-  if (response) {
-    const detail = await response.clone().json().then((body) => {
-      if (body && typeof body === 'object' && typeof body.error === 'string') return body.error;
-      if (body && typeof body === 'object' && typeof body.message === 'string') return body.message;
-      return '';
-    }).catch(() => response.clone().text().catch(() => ''));
-
-    if (detail.trim()) return detail.trim();
-  }
-
-  const message = errorMessage(error, '');
-  const lowerMessage = message.toLowerCase();
-  if (lowerMessage.includes('failed to send a request to the edge function') || lowerMessage.includes('failed to fetch')) {
-    return `Could not reach the ${functionName} Edge Function. Deploy ${functionName} in Supabase Edge Functions for this project, then refresh and try again.`;
-  }
-
-  if (lowerMessage.includes('edge function returned a non-2xx status code')) {
-    return `${functionName} returned an error. Check the Supabase Edge Function logs for the exact provider or secret issue.`;
-  }
-
-  return message || `Could not call the ${functionName} Edge Function.`;
-}
-
-function edgeFunctionResponse(error: unknown) {
-  if (!error || typeof error !== 'object') return null;
-  const context = (error as Record<string, unknown>).context;
-  return context instanceof Response ? context : null;
-}
-function errorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) return error.message;
-
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const parts = [record.message, record.details, record.hint, record.code]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-
-    if (parts.length > 0) return parts.join(' ');
-  }
-
-  return fallback;
-}
 function isMissingSocialPostSourceColumn(error: unknown) {
   if (!error || typeof error !== 'object') return false;
 
@@ -1004,90 +661,7 @@ function isMissingSocialPostSourceColumn(error: unknown) {
     && text.includes('social_posts')
     && (text.includes('campaign_id') || text.includes('content_item_id'));
 }
-function normalizeConnectionsResponse(value: unknown): ConnectionsResponse {
-  if (!value || typeof value !== 'object') return {};
-  const record = value as ConnectionsResponse;
-  return { connections: Array.isArray(record.connections) ? record.connections.filter(isConnectionStatus) : [] };
-}
 
-function isConnectionStatus(value: unknown): value is ConnectionStatus {
-  if (!value || typeof value !== 'object') return false;
-  const record = value as Record<string, unknown>;
-  return isProvider(record.provider)
-    && (record.status === 'connected' || record.status === 'ready_to_connect' || record.status === 'needs_setup')
-    && (record.authMode === 'oauth' || record.authMode === 'server_token' || record.authMode === 'ads_setup')
-    && typeof record.connectable === 'boolean'
-    && typeof record.secretsConfigured === 'boolean'
-    && typeof record.handleCount === 'number';
-}
-
-function isProvider(value: unknown): value is Provider {
-  return value === 'facebook'
-    || value === 'instagram'
-    || value === 'linkedin'
-    || value === 'youtube'
-    || value === 'google_ads'
-    || value === 'whatsapp'
-    || value === 'slack'
-    || value === 'telegram';
-}
-
-function getAuthUrl(value: unknown) {
-  if (value && typeof value === 'object') {
-    const authUrl = (value as Record<string, unknown>).authUrl;
-    if (typeof authUrl === 'string' && authUrl.startsWith('http')) return authUrl;
-  }
-  return '';
-}
-
-function channelName(provider: Provider) {
-  return channels.find((channel) => channel.provider === provider)?.name ?? provider;
-}
-
-function connectionStatusText(connection?: ConnectionStatus) {
-  if (!connection) return 'Unknown';
-  if (connection.status === 'connected') return 'Connected';
-  if (connection.status === 'ready_to_connect') return 'Ready';
-  return 'Setup';
-}
-
-function connectionBadgeClass(connection?: ConnectionStatus) {
-  if (!connection) return 'needs_setup';
-  if (connection.status === 'connected') return 'ready';
-  if (connection.status === 'ready_to_connect') return 'review';
-  return 'needs_setup';
-}
-
-function connectionActionText(connection?: ConnectionStatus) {
-  if (!connection) return 'Check';
-  if (!connection.secretsConfigured) return 'Setup';
-  if (connection.authMode === 'server_token') return 'Add handle';
-  if (connection.authMode === 'ads_setup') return 'Ads setup';
-  return connection.status === 'connected' ? 'Reconnect' : 'Connect';
-}
-
-function connectionHelperText(connection: ConnectionStatus | undefined, provider: Provider) {
-  if (!connection) return 'Status not loaded';
-  if (!connection.secretsConfigured) return 'Server setup required';
-  if (connection.status === 'connected') return connection.displayName ?? 'Ready to publish';
-  if (connection.authMode === 'server_token') return 'Server token ready';
-  if (provider === 'google_ads') return 'Use Ads campaign flow';
-  return 'Connect account';
-}
-
-function providerHandlePlaceholder(provider: Provider) {
-  const placeholders: Record<Provider, string> = {
-    facebook: 'Facebook Page ID',
-    instagram: 'Instagram Business Account ID',
-    linkedin: 'LinkedIn organization URN or ID',
-    youtube: 'YouTube Channel ID',
-    google_ads: 'Google Ads Customer ID',
-    whatsapp: 'Recipient phone number with country code',
-    slack: 'Slack channel ID, e.g. C0123ABC',
-    telegram: 'Telegram chat/channel ID',
-  };
-  return placeholders[provider];
-}
 function normalizePublishResult(value: unknown): PublishResult {
   if (!value || typeof value !== 'object') return {};
   const result = value as PublishResult;
@@ -1117,35 +691,9 @@ function isPostStatus(value: unknown): value is PostStatus {
     || value === 'failed'
     || value === 'cancelled';
 }
-function mapRowToHandle(row: DistributionHandleRow): Handle {
-  const meta = providerMeta[row.provider];
-  const uiStatus = getMetadataStatus(row.metadata);
-  return {
-    id: row.id,
-    provider: row.provider,
-    label: row.display_name,
-    detail: row.external_handle_id ? `${meta.detail} - ${row.external_handle_id}` : meta.detail,
-    type: meta.type,
-    status: uiStatus,
-    persisted: true,
-  };
-}
 
 function mapPostToQueueRun(post: SocialPostRow, targets: { target_label: string }[]): QueueRun {
   return { id: post.id, title: post.title, targetCount: targets.length, status: post.status, createdAt: post.created_at, targetLabels: targets.map((target) => target.target_label) };
-}
-
-function createLocalHandle(provider: Provider, label: string, externalId: string, status: HandleStatus): Handle {
-  const meta = providerMeta[provider];
-  return { id: `local-${Date.now()}`, provider, label, detail: externalId ? `${meta.detail} - ${externalId}` : meta.detail, type: meta.type, status, persisted: false };
-}
-
-function getMetadataStatus(metadata: Json): HandleStatus {
-  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata)) {
-    const value = metadata.ui_status;
-    if (value === 'ready' || value === 'review' || value === 'needs_setup') return value;
-  }
-  return 'ready';
 }
 
 function renderPreview(url: string, mimeType: string) {
@@ -1157,12 +705,6 @@ function renderPreview(url: string, mimeType: string) {
 
 function sanitizeFileName(fileName: string) {
   return fileName.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'upload';
-}
-
-function statusLabel(status: HandleStatus) {
-  if (status === 'ready') return 'Ready';
-  if (status === 'review') return 'Review';
-  return 'Setup';
 }
 
 function statusText(status: QueueRun['status']) {
