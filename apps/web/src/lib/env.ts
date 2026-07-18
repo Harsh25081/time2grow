@@ -1,17 +1,18 @@
 const localHosts = ['localhost', '127.0.0.1', '::1'];
 const browserIsLocal = typeof window !== 'undefined' && localHosts.includes(window.location.hostname);
-const configuredPosterWebhookUrl = (import.meta.env.VITE_N8N_POSTER_WEBHOOK_URL ?? '').trim();
+const configuredPosterAgentUrl = (import.meta.env.VITE_POSTER_AGENT_URL ?? '').trim();
 
-function safePosterWebhookUrl() {
+function safePosterAgentUrl() {
   if (browserIsLocal) {
-    return configuredPosterWebhookUrl || 'http://localhost:5678/webhook/time2grow-poster-workflow-2';
+    return configuredPosterAgentUrl || 'http://127.0.0.1:8000/api/poster';
   }
-  if (configuredPosterWebhookUrl.startsWith('/')) return configuredPosterWebhookUrl;
+  if (!configuredPosterAgentUrl) return '/api/poster';
+  if (configuredPosterAgentUrl.startsWith('/')) return configuredPosterAgentUrl;
 
   try {
-    const webhookUrl = new URL(configuredPosterWebhookUrl);
-    return webhookUrl.protocol === 'https:' && !localHosts.includes(webhookUrl.hostname)
-      ? configuredPosterWebhookUrl
+    const agentUrl = new URL(configuredPosterAgentUrl);
+    return agentUrl.protocol === 'https:' && !localHosts.includes(agentUrl.hostname)
+      ? configuredPosterAgentUrl
       : '';
   } catch {
     return '';
@@ -26,7 +27,7 @@ type PublicEnv = {
   supabaseUrl: string;
   supabaseAnonKey: string;
   billingProvider: string;
-  n8nPosterWebhookUrl: string;
+  posterAgentUrl: string;
 };
 
 export const env: PublicEnv = {
@@ -37,9 +38,8 @@ export const env: PublicEnv = {
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? '',
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
   billingProvider: import.meta.env.VITE_BILLING_PROVIDER ?? 'razorpay',
-  // Local development keeps its n8n shortcut. Hosted builds leave this empty
-  // and use the Supabase ai-handler unless a public HTTPS webhook is supplied.
-  n8nPosterWebhookUrl: safePosterWebhookUrl(),
+  // Python runs locally on port 8000 and as /api/poster in Vercel.
+  posterAgentUrl: safePosterAgentUrl(),
 };
 
 export const hasSupabaseConfig = Boolean(env.supabaseUrl && env.supabaseAnonKey);

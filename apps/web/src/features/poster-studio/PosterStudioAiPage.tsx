@@ -45,7 +45,7 @@ type PosterConcept = {
   content: PosterContent;
 };
 
-// A finished poster image returned by the AI agent (text baked in).
+// A finished poster image returned by the Python poster agent (text baked in).
 type AiPoster = {
   id: string;
   title: string;
@@ -295,20 +295,18 @@ export function PosterStudioAiPage() {
     setError('');
     setAiPosters([]);
 
-    const hasWorkflow = Boolean(env.n8nPosterWebhookUrl.trim());
+    const hasPosterAgent = Boolean(env.posterAgentUrl.trim());
 
-    // Offline only: with no workflow configured, the app renders its own
-    // editable template concepts. When a workflow IS configured, the result
-    // comes exclusively from that workflow - the app never substitutes its own.
-    if (hasWorkflow) {
+    // Offline only: with no agent configured, the app renders editable templates.
+    if (hasPosterAgent) {
       setConcepts([]);
       setSelectedId('');
-      setMessage('Sending your request to the poster workflow. Creating one fast poster first...');
+      setMessage('Sending your request to the Python poster agent. Creating one fast poster first...');
     } else {
       const nextConcepts = buildConceptSet(brief, objective, brandName);
       setConcepts(nextConcepts);
       setSelectedId(nextConcepts[0]?.id ?? '');
-      setMessage('No poster workflow is configured, so these are editable template concepts. Pick one, edit, then export.');
+      setMessage('No poster agent is configured, so these are editable template concepts. Pick one, edit, then export.');
     }
 
     const contactDetails: ContactDetails = {
@@ -350,23 +348,23 @@ export function PosterStudioAiPage() {
           const repeatedCount = rawPosters.length - freshPosters.length;
           rememberPosterRequest(posterMemoryKey, { brief, objective, offerType, ctaInput: callToAction, language, format, posterCount: posters.length, titles: posters.flatMap((poster) => [poster.title, poster.copy.headline]).filter(Boolean).slice(0, 6) });
           setMessage(freshPosters.length > 0
-            ? `Your workflow returned ${posters.length} fresh poster${posters.length > 1 ? 's' : ''}${repeatedCount > 0 ? ` and I skipped ${repeatedCount} repeated headline${repeatedCount > 1 ? 's' : ''}` : ''}. Pick one, then Download, Save, or send to Social Hub.`
-            : 'The workflow still reused an older headline, so I am showing the generated poster instead of wasting the wait. Generate again for a fresh direction.');
+            ? `Your poster agent returned ${posters.length} fresh poster${posters.length > 1 ? 's' : ''}${repeatedCount > 0 ? ` and I skipped ${repeatedCount} repeated headline${repeatedCount > 1 ? 's' : ''}` : ''}. Pick one, then Download, Save, or send to Social Hub.`
+            : 'The poster agent reused an older headline, so I am showing the generated poster instead of wasting the wait. Generate again for a fresh direction.');
           return;
         }
         if (payload.ok === false && payload.error) {
           setError(payload.error);
-        } else if (hasWorkflow) {
-          setError('The workflow ran but returned no image. Open the workflow output to see what it sent back.');
+        } else if (hasPosterAgent) {
+          setError('The Python poster agent ran but returned no image.');
         }
-      } else if (hasWorkflow) {
-        setError('Could not reach the poster workflow at ' + env.n8nPosterWebhookUrl.trim() + '. Is n8n running and the workflow active?');
+      } else if (hasPosterAgent) {
+        setError('Could not reach the Python poster agent at ' + env.posterAgentUrl.trim() + '.');
       }
 
-      if (hasWorkflow) setMessage('');
+      if (hasPosterAgent) setMessage('');
     } catch (generateError) {
-      setError(errorMessage(generateError, 'The poster workflow failed.'));
-      if (hasWorkflow) setMessage('');
+      setError(errorMessage(generateError, 'The Python poster agent failed.'));
+      if (hasPosterAgent) setMessage('');
     } finally {
       setGenerating(false);
     }
@@ -885,13 +883,14 @@ async function requestAiPoster(params: {
   productImage: ProductImageInput | null;
   learningContext: PosterLearningContext;
 }): Promise<PosterAgentPayload | null> {
-  // When an n8n webhook is configured, it is the ONLY poster engine - the app
-  // just relays the request and renders whatever the workflow returns.
-  if (env.n8nPosterWebhookUrl.trim()) {
-    return await requestN8nPoster(params);
+  // The Python API is the primary poster engine. The Supabase action remains a
+  // safe fallback during local setup or a temporary function outage.
+  if (env.posterAgentUrl.trim()) {
+    const posterResult = await requestPythonPosterAgent(params);
+    if (posterResult?.ok !== false) return posterResult;
   }
 
-  // No workflow configured: use the Supabase ai-handler as an offline engine.
+  // No reachable Python agent: use the existing server-side Supabase engine.
   if (supabase && params.orgId) {
     const { data, error } = await supabase.functions.invoke('ai-handler', {
       body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high' },
@@ -902,7 +901,7 @@ async function requestAiPoster(params: {
   return null;
 }
 
-async function requestN8nPoster(params: {
+async function requestPythonPosterAgent(params: {
   brief: string;
   objective: string;
   format: PosterFormat;
@@ -922,25 +921,30 @@ async function requestN8nPoster(params: {
   productImage: ProductImageInput | null;
   learningContext: PosterLearningContext;
 }): Promise<PosterAgentPayload | null> {
-  const url = env.n8nPosterWebhookUrl.trim();
+  const url = env.posterAgentUrl.trim();
   if (!url || !params.orgId) return null;
 
   const controller = new AbortController();
-  // Wait longer than the workflow's own ceilings (DeepSeek plan 120s + image
-  // generation) so a slow run finishes instead of the app aborting while n8n
-  // is still working.
+  // Planning plus high-quality image generation can take several minutes.
   const timeout = window.setTimeout(() => controller.abort(), 300000);
   try {
+    const { data: sessionData } = supabase
+      ? await supabase.auth.getSession()
+      : { data: { session: null } };
+    const accessToken = sessionData.session?.access_token ?? '';
     const response = await fetch(url, {
       method: 'POST',
       signal: controller.signal,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
       body: JSON.stringify({
         mode: 'poster_set',
         action: 'poster_set',
         orgId: params.orgId,
         userId: params.userId,
-        // Raw request text, unmodified - the workflow decides how to interpret it.
+        // Raw request text, unmodified - Python performs the planning and render.
         userIdea: params.brief,
         rawBrief: params.brief,
         brief: params.brief,
@@ -968,29 +972,28 @@ async function requestN8nPoster(params: {
       }),
     });
     if (!response.ok) {
-      const details = await response.text().catch(() => '');
+      const details = await response.json().catch(() => null) as { detail?: string; error?: string } | null;
       return {
         ok: false,
-        error: 'Poster workflow returned HTTP ' + response.status + (details ? ': ' + details.slice(0, 500) : '.'),
+        error: details?.detail || details?.error || ('Python poster agent returned HTTP ' + response.status + '.'),
       };
     }
     const payload = (await response.json().catch(() => null)) as PosterAgentPayload | null;
-    return payload ?? { ok: false, error: 'Poster workflow returned an empty response.' };
+    return payload ?? { ok: false, error: 'Python poster agent returned an empty response.' };
   } catch (requestError) {
     if (requestError instanceof DOMException && requestError.name === 'AbortError') {
-      return { ok: false, error: 'Poster workflow timed out after 5 minutes. n8n may still be generating images; try again with a smaller brief or check the latest n8n execution.' };
+      return { ok: false, error: 'Python poster generation timed out after 5 minutes. Try again with a shorter brief.' };
     }
     return {
       ok: false,
-      error: errorMessage(requestError, 'Browser could not connect to the poster workflow at ' + url + '. Make sure n8n is running and the workflow is active.'),
+      error: errorMessage(requestError, 'Browser could not connect to the Python poster agent at ' + url + '.'),
     };
   } finally {
     window.clearTimeout(timeout);
   }
 }
 
-// Read finished poster images out of the agent response. Supports the n8n
-// poster_set shape (concepts[]) and the single-image ai-handler shape.
+// Read finished images from the Python poster_set shape or Supabase fallback.
 function normalizePosterHeadline(value: string) {
   return value.toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
 }
