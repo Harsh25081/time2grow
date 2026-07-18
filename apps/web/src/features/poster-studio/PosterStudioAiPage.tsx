@@ -104,6 +104,7 @@ export function PosterStudioAiPage() {
   const [objective, setObjective] = useState('');
   const [format, setFormat] = useState<PosterFormat>('portrait');
   const [language, setLanguage] = useState<PosterLanguage>('en');
+  const [posterCount, setPosterCount] = useState<1 | 2>(1);
   const [offerType, setOfferType] = useState('');
   const [callToAction, setCallToAction] = useState('');
   const [contactShow, setContactShow] = useState<Record<ContactKey, boolean>>({ website: false, phone: false, email: false });
@@ -322,6 +323,7 @@ export function PosterStudioAiPage() {
         objective,
         format,
         language,
+        posterCount,
         offerType,
         callToAction,
         contactDetails,
@@ -700,14 +702,23 @@ export function PosterStudioAiPage() {
               <input type="checkbox" checked={showQr} disabled={!qrUrl} onChange={(event) => setShowQr(event.target.checked)} />
               <span>{qrUrl ? 'Show QR code on poster' : 'Show QR code (upload one in Business DNA first)'}</span>
             </label>
-            <label className="poster-field">
-              <span>Language</span>
-              <select value={language} onChange={(event) => setLanguage(event.target.value as PosterLanguage)}>
-                <option value="en">English</option>
-                <option value="te">Telugu</option>
-                <option value="hi">Hindi</option>
-              </select>
-            </label>
+            <div className="poster-field-row">
+              <label className="poster-field">
+                <span>Language</span>
+                <select value={language} onChange={(event) => setLanguage(event.target.value as PosterLanguage)}>
+                  <option value="en">English</option>
+                  <option value="te">Telugu</option>
+                  <option value="hi">Hindi</option>
+                </select>
+              </label>
+              <label className="poster-field">
+                <span>Posters</span>
+                <select value={posterCount} onChange={(event) => setPosterCount(Number(event.target.value) as 1 | 2)}>
+                  <option value={1}>1 poster</option>
+                  <option value={2}>2 posters</option>
+                </select>
+              </label>
+            </div>
             <label className="poster-field">
               <span>Size</span>
               <select value={format} onChange={(event) => setFormat(event.target.value as PosterFormat)}>
@@ -720,7 +731,7 @@ export function PosterStudioAiPage() {
             </label>
             <button type="button" className="primary-action" onClick={handleGenerate} disabled={generating}>
               {generating ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-              <span>{generating ? 'Creating poster' : 'Generate poster'}</span>
+              <span>{generating ? (posterCount === 2 ? 'Creating posters' : 'Creating poster') : (posterCount === 2 ? 'Generate 2 posters' : 'Generate poster')}</span>
             </button>
 
             {!usingAi && selectedConcept ? (
@@ -849,8 +860,8 @@ export function PosterStudioAiPage() {
             ) : (
               <section className="empty-state" aria-label="No posters yet">
                 <Sparkles size={26} />
-                <h3>Generate one poster</h3>
-                <p>Enter a brief, optionally attach a product photo, then Generate. The AI designs one finished poster you can export.</p>
+                <h3>Generate your poster</h3>
+                <p>Choose one or two posters, enter a brief, optionally attach a product photo, then Generate.</p>
               </section>
             )}
 
@@ -868,6 +879,7 @@ async function requestAiPoster(params: {
   objective: string;
   format: PosterFormat;
   language: PosterLanguage;
+  posterCount: 1 | 2;
   offerType: string;
   callToAction: string;
   contactDetails: ContactDetails;
@@ -891,11 +903,28 @@ async function requestAiPoster(params: {
   }
 
   // No reachable Python agent: use the existing server-side Supabase engine.
-  if (supabase && params.orgId) {
-    const { data, error } = await supabase.functions.invoke('ai-handler', {
-      body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high' },
-    });
-    if (!error && data) return data as PosterAgentPayload;
+  const supabaseClient = supabase;
+  if (supabaseClient && params.orgId) {
+    const results = await Promise.all(Array.from({ length: params.posterCount }, async (_, index) => {
+      const { data, error } = await supabaseClient.functions.invoke('ai-handler', {
+        body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high', variantIndex: index, variantCount: params.posterCount },
+      });
+      return error || !data ? null : data as PosterAgentPayload;
+    }));
+    const concepts = results
+      .flatMap((result, index): AgentConcept[] => {
+        if (!result) return [];
+        const imageDataUrl = firstImage(result);
+        if (!imageDataUrl) return [];
+        return [{
+          id: 'fallback-' + (index + 1),
+          title: stringValue(result.poster?.title) || 'AI poster ' + (index + 1),
+          angle: 'AI poster',
+          imageDataUrl,
+          copy: result.copy,
+        }];
+      });
+    if (concepts.length > 0) return { ok: true, mode: 'poster_set', concepts };
   }
 
   return null;
@@ -906,6 +935,7 @@ async function requestPythonPosterAgent(params: {
   objective: string;
   format: PosterFormat;
   language: PosterLanguage;
+  posterCount: 1 | 2;
   offerType: string;
   callToAction: string;
   contactDetails: ContactDetails;
@@ -959,9 +989,9 @@ async function requestPythonPosterAgent(params: {
         qr: { show: params.qr.show },
         theme: 'custom',
         sizes: [posterDimensions[params.format].exportLabel],
-        count: 1,
-        conceptCount: 1,
-        previewCount: 1,
+        count: params.posterCount,
+        conceptCount: params.posterCount,
+        previewCount: params.posterCount,
         brandName: params.brandName,
         palette: params.palette,
         businessDna: buildBusinessDnaPayload(params.businessDna),
