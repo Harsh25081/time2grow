@@ -301,7 +301,7 @@ export function PosterStudioAiPage() {
     if (hasPosterAgent) {
       setConcepts([]);
       setSelectedId('');
-      setMessage('Sending your request to the Python poster agent. Creating one fast poster first...');
+      setMessage('');
     } else {
       const nextConcepts = buildConceptSet(brief, objective, brandName);
       setConcepts(nextConcepts);
