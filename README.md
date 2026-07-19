@@ -42,6 +42,7 @@ Still needed before full public launch:
 - Poster Studio: editable poster canvas with logo, text, RGB palette, background controls, download, save, and Social Hub handoff.
 - Poster AI Studio: uses Supabase Edge Functions in hosted deployments, with optional n8n workflows for local or advanced automation.
 - Social Hub: connects handles and queues/publishes content to selected social, ads, and messaging channels.
+- Campaigns: plan campaign objectives, status, and linked content/tasks/social work.
 - Supabase backend: auth, storage, Edge Functions, database tables, RLS, and organization-scoped SaaS data.
 
 The product objective is expanding from generating marketing assets to running marketing work end to
@@ -238,6 +239,6 @@ More setup details live in:
 1. Smoke test Business DNA, logo upload/fetch, and brand colors.
 2. Smoke test Poster AI with different topics: SaaS, laundry, festival, NGO, event, and local service.
 3. Save generated posters to Supabase Storage and confirm download works.
-4. Send saved poster assets to selected Social Hub handles.
-5. Add automated tests and GitHub CI.
+4. Attach saved content, tasks, and social posts to campaigns during normal workflow smoke tests.
+5. Send saved poster assets to selected Social Hub handles.
 6. Add monitoring, billing, legal pages, and provider verification for public launch.

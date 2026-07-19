@@ -1955,6 +1955,36 @@ a {
   min-height: 34px;
   padding: 0 10px;
 }
+
+.campaign-row {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, auto);
+}
+
+.campaign-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.campaign-metrics span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.campaign-metrics strong {
+  overflow: visible;
+  color: var(--text);
+  white-space: normal;
+}
 @media (max-width: 1040px) {
   .content-creator-grid {
     grid-template-columns: 1fr;

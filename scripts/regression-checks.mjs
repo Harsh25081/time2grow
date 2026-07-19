@@ -154,6 +154,16 @@ requirePattern(
   'apps/web/src/app/AppShell.tsx',
   /mobilePrimaryNav[\s\S]*mobileMoreNav[\s\S]*mobile-more-menu/,
 );
+requirePattern(
+  'Campaigns page is real CRUD and role-aware',
+  'apps/web/src/features/campaigns/CampaignsPage.tsx',
+  /from\('campaigns'\)[\s\S]*eq\('org_id', organization\.id\)[\s\S]*canWrite[\s\S]*Create campaign[\s\S]*campaign-metrics/,
+);
+requirePattern(
+  'Campaigns route is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /CampaignsPage[\s\S]*to: '\/campaigns'[\s\S]*path="\/campaigns"/,
+);
 
 requirePattern(
   'feature pages are route-level lazy chunks',

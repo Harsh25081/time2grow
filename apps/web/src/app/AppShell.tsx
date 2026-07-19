@@ -26,6 +26,7 @@ import type { Database } from '../types/database';
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 
 const BusinessDnaPage = lazy(() => import('../features/business-dna/BusinessDnaPage').then((module) => ({ default: module.BusinessDnaPage })));
+const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
 const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
@@ -51,6 +52,7 @@ const primaryNav: NavItem[] = [
   { to: '/poster-ai', label: 'AI Posters', icon: Sparkles },
   { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/social', label: 'Social', icon: Send },
+  { to: '/campaigns', label: 'Campaigns', icon: Target },
   { to: '/tasks', label: 'Tasks', icon: CalendarDays },
   { to: '/leads', label: 'Leads', icon: Target },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
@@ -200,6 +202,7 @@ export function AppShell() {
           <Route path="/poster-ai" element={<PosterStudioAiPage />} />
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/social" element={<SocialHubPage />} />
+          <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/tasks" element={<TasksPage />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
