@@ -3810,3 +3810,264 @@ a {
   }
 }
 
+/* Analytics ------------------------------------------------------------- */
+
+.analytics-intro {
+  margin: 0;
+  max-width: 70ch;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.analytics-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.analytics-source-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.analytics-source-select select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.analytics-toolbar__actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.analytics-toolbar__actions .primary-action {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.icon-text-button.danger {
+  color: var(--primary);
+}
+
+.analytics-kpis {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.stat-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 800;
+}
+
+.stat-delta.up {
+  color: var(--green);
+}
+
+.stat-delta.down {
+  color: var(--primary);
+}
+
+.analytics-panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  display: grid;
+  gap: 16px;
+}
+
+.analytics-table-scroll {
+  overflow-x: auto;
+}
+
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  min-width: 720px;
+}
+
+.analytics-table th,
+.analytics-table td {
+  padding: 10px 12px;
+  text-align: right;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+.analytics-table thead th {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 800;
+}
+
+.analytics-table th[scope='row'],
+.analytics-table thead th:first-child {
+  text-align: left;
+}
+
+.analytics-table th[scope='row'] {
+  font-weight: 800;
+}
+
+.analytics-table tfoot th,
+.analytics-table tfoot td {
+  border-bottom: 0;
+  border-top: 2px solid var(--line);
+  font-weight: 800;
+}
+
+.source-bar {
+  display: inline-block;
+  width: 90px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.source-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.connection-status.connected {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.registry-card {
+  border-style: dashed;
+}
+
+/* Ask-your-data panel */
+
+.eyebrow.ai {
+  color: var(--ai);
+}
+
+.primary-action.ai {
+  background: var(--ai);
+}
+
+.ai-query-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-query-form input {
+  flex: 1 1 320px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+}
+
+.ai-query-form .primary-action {
+  min-height: 46px;
+  padding: 0 18px;
+}
+
+.ai-query-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-query-examples button {
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ai-query-examples button:hover:not(:disabled) {
+  color: var(--ai);
+  border-color: var(--ai);
+}
+
+.ai-answer {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ai);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 12px;
+  background: #fbf8ff;
+}
+
+.ai-answer p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.ai-highlights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ai-highlights li {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  min-width: 140px;
+}
+
+.ai-highlights span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.ai-highlights strong {
+  font-size: 15px;
+}
+
+@media (max-width: 960px) {
+  .analytics-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analytics-toolbar__actions {
+    margin-left: 0;
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .analytics-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+

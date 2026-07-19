@@ -117,6 +117,7 @@ const actions: Record<string, ActionHandler> = {
   generate_poster_concepts: generatePosterConcepts,
   generate_poster: generatePoster,
   generate_poster_art: generatePosterArt,
+  analytics_query: analyticsQuery,
 };
 
 Deno.serve(async (req) => {
@@ -725,6 +726,119 @@ function parsePosterArtCompletion(raw: string) {
     subheadline: stringField(parsed.subheadline).trim().slice(0, 200),
     message: stringField(parsed.message).trim().slice(0, 600),
     callToAction: stringField(parsed.callToAction).trim().slice(0, 80),
+  };
+}
+
+type MetricTotals = { spend: number; impressions: number; clicks: number; conversions: number; revenue: number };
+
+// Answers a plain-language question strictly from the org's own unified reporting data. We aggregate
+// the rows in code (totals + per-source) and hand the model a compact, factual summary so it never
+// invents numbers — it only explains and compares what is actually there.
+async function analyticsQuery({ supabase, orgId, payload }: ActionContext) {
+  const question = limitedString(payload.question, 500);
+  if (!question) throw new HttpError(400, 'Enter a question about your reporting data.');
+
+  const requestedDays = typeof payload.days === 'number' ? payload.days : Number(payload.days);
+  const days = Number.isFinite(requestedDays) ? Math.min(90, Math.max(1, Math.round(requestedDays))) : 30;
+  const sourceKey = limitedString(payload.sourceKey, 80);
+
+  const since = new Date();
+  since.setUTCHours(0, 0, 0, 0);
+  since.setUTCDate(since.getUTCDate() - (days - 1));
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  let query = supabase
+    .from('analytics_metrics')
+    .select('source_key, spend, impressions, clicks, conversions, revenue')
+    .eq('org_id', orgId)
+    .gte('metric_date', sinceIso)
+    .limit(10_000);
+  if (sourceKey) query = query.eq('source_key', sourceKey);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = data ?? [];
+  if (rows.length === 0) {
+    throw new HttpError(400, 'No reporting data in that window yet. Connect a source or load sample data first.');
+  }
+
+  const empty = (): MetricTotals => ({ spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 });
+  const totals = empty();
+  const bySourceMap = new Map<string, MetricTotals>();
+
+  for (const row of rows) {
+    const key = typeof row.source_key === 'string' ? row.source_key : 'unknown';
+    const acc = bySourceMap.get(key) ?? empty();
+    for (const field of ['spend', 'impressions', 'clicks', 'conversions', 'revenue'] as const) {
+      const value = Number((row as Record<string, unknown>)[field]) || 0;
+      totals[field] += value;
+      acc[field] += value;
+    }
+    bySourceMap.set(key, acc);
+  }
+
+  const derive = (t: MetricTotals) => ({
+    spend: Math.round(t.spend),
+    impressions: t.impressions,
+    clicks: t.clicks,
+    conversions: Math.round(t.conversions),
+    revenue: Math.round(t.revenue),
+    roas: t.spend > 0 ? Number((t.revenue / t.spend).toFixed(2)) : null,
+    ctr: t.impressions > 0 ? Number(((t.clicks / t.impressions) * 100).toFixed(2)) : null,
+    cpc: t.clicks > 0 ? Number((t.spend / t.clicks).toFixed(2)) : null,
+    cpa: t.conversions > 0 ? Number((t.spend / t.conversions).toFixed(2)) : null,
+  });
+
+  const bySource = [...bySourceMap.entries()]
+    .map(([key, value]) => ({ source: key, ...derive(value) }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const summary = {
+    currency: 'INR',
+    windowDays: days,
+    sourceFilter: sourceKey || 'all',
+    totals: derive(totals),
+    bySource,
+  };
+
+  const completion = await callModel([
+    {
+      role: 'system',
+      content:
+        'You are the analytics assistant for a marketing tool. Answer the user question using ONLY the JSON reporting data provided. Never invent numbers, sources, dates, or trends that are not in the data. Amounts are in INR (₹); ROAS is revenue divided by spend; CTR and CPC are already computed. If the data cannot answer the question, say so plainly. Reply with STRICT JSON only, no prose, matching this exact shape: {"answer": string, "highlights": [{"label": string, "value": string}]}. answer is 1 to 4 short sentences of plain, useful analysis. highlights is 2 to 4 key figures pulled straight from the data (e.g. {"label":"Best ROAS","value":"Google Ads · 4.31×"}). Keep it concrete and honest.',
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({ question, reportingData: summary }),
+    },
+  ], 600, 'scoring');
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(completion);
+  } catch {
+    throw new HttpError(502, 'The AI response could not be read. Try again.');
+  }
+
+  const highlights = Array.isArray(parsed.highlights)
+    ? parsed.highlights
+        .map((item) => {
+          if (!item || typeof item !== 'object') return null;
+          const record = item as Record<string, unknown>;
+          const label = limitedString(record.label, 80);
+          if (!label) return null;
+          return { label, value: limitedString(record.value, 80) };
+        })
+        .filter((item): item is { label: string; value: string } => Boolean(item))
+        .slice(0, 4)
+    : [];
+
+  return {
+    result: {
+      answer: limitedString(parsed.answer, 1200) || 'No answer was returned.',
+      highlights,
+      totals: summary.totals,
+    },
   };
 }
 

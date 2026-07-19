@@ -580,7 +580,93 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
-      };    };
+      };
+      analytics_sources: {
+        Row: {
+          id: string;
+          org_id: string;
+          source_key: string;
+          display_name: string;
+          category: 'ads' | 'social' | 'ecommerce' | 'web' | 'email' | 'crm' | 'other';
+          status: 'connected' | 'syncing' | 'disconnected' | 'error';
+          external_account_id: string | null;
+          last_synced_at: string | null;
+          metadata: Json;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          source_key: string;
+          display_name: string;
+          category?: 'ads' | 'social' | 'ecommerce' | 'web' | 'email' | 'crm' | 'other';
+          status?: 'connected' | 'syncing' | 'disconnected' | 'error';
+          external_account_id?: string | null;
+          last_synced_at?: string | null;
+          metadata?: Json;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          source_key?: string;
+          display_name?: string;
+          category?: 'ads' | 'social' | 'ecommerce' | 'web' | 'email' | 'crm' | 'other';
+          status?: 'connected' | 'syncing' | 'disconnected' | 'error';
+          external_account_id?: string | null;
+          last_synced_at?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      analytics_metrics: {
+        Row: {
+          id: string;
+          org_id: string;
+          source_key: string;
+          campaign: string;
+          metric_date: string;
+          spend: number;
+          impressions: number;
+          clicks: number;
+          conversions: number;
+          revenue: number;
+          metadata: Json;
+          created_by: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          source_key: string;
+          campaign?: string;
+          metric_date: string;
+          spend?: number;
+          impressions?: number;
+          clicks?: number;
+          conversions?: number;
+          revenue?: number;
+          metadata?: Json;
+          created_by: string;
+          created_at?: string;
+        };
+        Update: {
+          source_key?: string;
+          campaign?: string;
+          metric_date?: string;
+          spend?: number;
+          impressions?: number;
+          clicks?: number;
+          conversions?: number;
+          revenue?: number;
+          metadata?: Json;
+        };
+        Relationships: [];
+      };
+    };
     Views: Record<string, never>;
     Functions: Record<string, never>;
     Enums: Record<string, never>;

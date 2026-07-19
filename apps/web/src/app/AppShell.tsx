@@ -14,6 +14,7 @@ import {
   Target,
 } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { AnalyticsPage } from '../features/analytics/AnalyticsPage';
 import { BusinessDnaPage } from '../features/business-dna/BusinessDnaPage';
 import { ConnectionsPage } from '../features/connections/ConnectionsPage';
 import { ContentCreatorPage } from '../features/content-studio/ContentCreatorPage';
@@ -41,6 +42,7 @@ const primaryNav: NavItem[] = [
   { to: '/connections', label: 'Connections', icon: Link2 },
   { to: '/social', label: 'Social', icon: Send },
   { to: '/tasks', label: 'Tasks', icon: CalendarDays },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
   { to: '/leads', label: 'Leads', icon: Target },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/settings', label: 'Settings', icon: Settings },
@@ -164,6 +166,7 @@ export function AppShell() {
           <Route path="/connections" element={<ConnectionsPage />} />
           <Route path="/social" element={<SocialHubPage />} />
           <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
           <Route path="/settings" element={<ModulePlaceholder title="Settings" icon={Settings} />} />
