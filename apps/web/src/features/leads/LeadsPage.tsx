@@ -11,6 +11,7 @@ type LeadRow = Database['public']['Tables']['leads']['Row'];
 type LeadStatus = LeadRow['status'];
 type LeadSource = LeadRow['source'];
 type LeadFilter = 'all' | LeadStatus | 'follow_up';
+type IntakeMode = 'none' | 'manual' | 'import' | 'sync';
 type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
 
@@ -100,6 +101,7 @@ export function LeadsPage() {
   const [importSkipped, setImportSkipped] = useState(0);
   const [selectedSourceId, setSelectedSourceId] = useState('');
   const [editingId, setEditingId] = useState('');
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>('none');
   const [filter, setFilter] = useState<LeadFilter>('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -226,12 +228,14 @@ export function LeadsPage() {
 
   function startCreate() {
     resetForm();
+    setIntakeMode('manual');
     setMessage('');
     setError('');
   }
 
   function startEdit(lead: LeadRow) {
     if (!canWrite) return;
+    setIntakeMode('manual');
     setEditingId(lead.id);
     setForm({
       fullName: lead.full_name,
@@ -296,7 +300,7 @@ export function LeadsPage() {
           .single();
         if (updateError) throw updateError;
         setLeads((current) => current.map((lead) => (lead.id === data.id ? data : lead)));
-        setMessage('Lead updated.');
+      setMessage('Lead updated.');
       } else {
         const { data, error: insertError } = await supabase
           .from('leads')
@@ -308,11 +312,24 @@ export function LeadsPage() {
         setMessage('Lead created.');
       }
       resetForm();
+      setIntakeMode('none');
     } catch (submitError) {
       setError(errorMessage(submitError, 'Could not save lead.'));
     } finally {
       setSaving(false);
     }
+  }
+
+  function openImport() {
+    setIntakeMode('import');
+    setMessage('');
+    setError('');
+  }
+
+  function openSync() {
+    setIntakeMode('sync');
+    setMessage('');
+    setError('');
   }
 
   async function patchLead(lead: LeadRow, patch: Database['public']['Tables']['leads']['Update']) {
@@ -460,9 +477,23 @@ export function LeadsPage() {
           <p className="eyebrow">Outcomes</p>
           <h2>Leads CRM</h2>
         </div>
-        <span className={readOnly ? 'status-pill warning' : 'status-pill success'}>
-          {readOnly ? 'Read only' : `${leads.length} leads`}
-        </span>
+        <div className="page-header-actions">
+          <span className={readOnly ? 'status-pill warning' : 'status-pill success'}>
+            {readOnly ? 'Read only' : `${leads.length} leads`}
+          </span>
+          <button type="button" className="icon-text-button" onClick={startCreate} disabled={!canWrite}>
+            <Target size={16} />
+            <span>New lead</span>
+          </button>
+          <button type="button" className="icon-text-button" onClick={openImport} disabled={!canWrite}>
+            <Upload size={16} />
+            <span>Import sheet</span>
+          </button>
+          <button type="button" className="icon-text-button" onClick={openSync} disabled={!canWrite}>
+            <RefreshCw size={16} />
+            <span>Sync source</span>
+          </button>
+        </div>
       </header>
 
       {loading ? (
@@ -471,32 +502,35 @@ export function LeadsPage() {
           <h3>Loading leads</h3>
         </section>
       ) : (
-        <div className="content-creator-grid">
-          <section className="stats-grid lead-stats" aria-label="Lead outcomes">
-            <article className="stat-card">
+        <div className="leads-workspace">
+          <section className="lead-summary-strip" aria-label="Lead outcomes">
+            <article>
               <span>Open pipeline</span>
               <strong>{summary.open}</strong>
               <small>Active lead conversations</small>
             </article>
-            <article className="stat-card">
+            <article>
               <span>Won value</span>
               <strong>{formatMoney(summary.wonValue)}</strong>
               <small>Tracked from closed leads</small>
             </article>
-            <article className="stat-card">
+            <article>
               <span>Due follow-ups</span>
               <strong>{summary.followUps}</strong>
               <small>Today or overdue</small>
             </article>
           </section>
 
-          <section className="draft-panel creator-panel" aria-label="Create or edit lead">
+          {intakeMode === 'manual' ? (
+          <section className="draft-panel lead-action-panel" aria-label="Create or edit lead">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Lead</p>
                 <h3>{editingId ? 'Edit lead' : 'New lead'}</h3>
               </div>
-              <Target size={21} />
+              <button type="button" className="icon-button" onClick={() => { resetForm(); setIntakeMode('none'); }} aria-label="Close lead form">
+                <X size={16} />
+              </button>
             </div>
 
             {readOnly ? <p className="form-message warning">Ask an owner, admin, or editor to create and manage leads.</p> : null}
@@ -561,7 +595,7 @@ export function LeadsPage() {
 
               <div className="creator-actions draft-body-field">
                 {editingId ? (
-                  <button type="button" className="icon-text-button" onClick={startCreate}>
+                  <button type="button" className="icon-text-button" onClick={() => { resetForm(); setIntakeMode('none'); }}>
                     <X size={16} />
                     <span>Cancel</span>
                   </button>
@@ -576,14 +610,18 @@ export function LeadsPage() {
             {message ? <p className="form-message success">{message}</p> : null}
             {error ? <p className="form-message error">{error}</p> : null}
           </section>
+          ) : null}
 
-          <section className="draft-panel creator-panel lead-import-panel" aria-label="Import leads">
+          {intakeMode === 'import' ? (
+          <section className="draft-panel lead-action-panel lead-import-panel" aria-label="Import leads">
             <div className="section-heading">
               <div>
                 <p className="eyebrow">Import</p>
-                <h3>Sheets and sources</h3>
+                <h3>Lead sheet</h3>
               </div>
-              <Upload size={21} />
+              <button type="button" className="icon-button" onClick={() => setIntakeMode('none')} aria-label="Close import panel">
+                <X size={16} />
+              </button>
             </div>
 
             {isAgency ? (
@@ -639,33 +677,62 @@ export function LeadsPage() {
               </div>
             ) : null}
 
-            <div className="lead-source-sync">
+          </section>
+          ) : null}
+
+          {intakeMode === 'sync' ? (
+          <section className="draft-panel lead-action-panel lead-import-panel" aria-label="Sync connected lead source">
+            <div className="section-heading">
               <div>
                 <p className="eyebrow">From Connections</p>
-                <h4>Sync connected marketing source</h4>
+                <h3>Marketing source</h3>
               </div>
-              <div className="lead-import-grid">
-                <label>
-                  <span>Marketing source</span>
-                  <select value={selectedSourceId} onChange={(event) => setSelectedSourceId(event.target.value)}>
-                    <option value="">Choose source</option>
-                    {analyticsSources.map((source) => (
-                      <option key={source.id} value={source.id}>
-                        {source.display_name || reportingSourceName(source.source_key)} - {sourceStatusLabel(source.status)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button type="button" className="icon-text-button lead-sync-button" onClick={syncConnectedSource} disabled={!canWrite || syncing || connectedLeadSources.length === 0}>
-                  {syncing ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-                  <span>{syncing ? 'Syncing' : 'Sync leads'}</span>
-                </button>
-              </div>
-              {connectedLeadSources.length === 0 ? <p className="form-message warning">Connect marketing data sources in Settings / Connections first.</p> : null}
+              <button type="button" className="icon-button" onClick={() => setIntakeMode('none')} aria-label="Close source sync panel">
+                <X size={16} />
+              </button>
             </div>
-          </section>
 
-          <section className="draft-panel saved-content-panel" aria-label="Lead list">
+            {isAgency ? (
+              <BrandDnaSelect
+                label="Sync for"
+                selfLabel={organization?.name ?? 'Agency brand'}
+                clients={clients}
+                value={importBrandSelectionId}
+                onChange={setImportBrandSelectionId}
+              />
+            ) : null}
+
+            <div className="lead-import-grid">
+              <label>
+                <span>Campaign</span>
+                <select value={importCampaignId} onChange={(event) => setImportCampaignId(event.target.value)}>
+                  <option value="">No campaign selected</option>
+                  {importCampaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Marketing source</span>
+                <select value={selectedSourceId} onChange={(event) => setSelectedSourceId(event.target.value)}>
+                  <option value="">Choose source</option>
+                  {analyticsSources.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.display_name || reportingSourceName(source.source_key)} - {sourceStatusLabel(source.status)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <button type="button" className="primary-action" onClick={syncConnectedSource} disabled={!canWrite || syncing || connectedLeadSources.length === 0}>
+              {syncing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
+              <span>{syncing ? 'Syncing' : 'Sync leads'}</span>
+            </button>
+            {connectedLeadSources.length === 0 ? <p className="form-message warning">Connect marketing data sources in Settings / Connections first.</p> : null}
+            {message ? <p className="form-message success">{message}</p> : null}
+            {error ? <p className="form-message error">{error}</p> : null}
+          </section>
+          ) : null}
+
+          <section className="draft-panel leads-pipeline-panel" aria-label="Lead list">
             <div className="section-heading content-library-heading">
               <div>
                 <p className="eyebrow">Pipeline</p>
