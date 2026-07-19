@@ -11,7 +11,8 @@ import {
 import { supabase } from '../../lib/supabase';
 import type { Database, Json } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
-import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
+import { SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
+import type { ClientBusinessDnaRow } from '../business-dna/brandDna';
 
 type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'updated_at' | 'client_business_dna_id'>;
 type ContentItemRow = Pick<Database['public']['Tables']['content_items']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'content_type' | 'metadata' | 'status' | 'created_at'>;
@@ -28,6 +29,8 @@ type LoadError = {
 type CampaignRollup = {
   id: string;
   name: string;
+  brandId: string;
+  brandName: string;
   status: CampaignRow['status'];
   updatedAt: string;
   content: number;
@@ -37,12 +40,35 @@ type CampaignRollup = {
   posts: number;
   livePosts: number;
   spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
   revenue: number;
+};
+
+type Totals = {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  revenue: number;
+};
+
+type BrandRollup = Totals & {
+  brandId: string;
+  brandName: string;
+  campaigns: number;
+  activeCampaigns: number;
+  content: number;
+  approvedContent: number;
+  openTasks: number;
+  livePosts: number;
 };
 
 const completedTaskStatuses: MarketingTaskRow['status'][] = ['approved', 'done', 'archived'];
 const approvedContentStatuses: ContentItemRow['status'][] = ['ready', 'queued', 'published'];
 const livePostStatuses: SocialPostRow['status'][] = ['queued', 'publishing', 'published'];
+const emptyTotals: Totals = { spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 };
 
 export function AnalyticsPage() {
   const { organization } = useAuth();
@@ -55,10 +81,8 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<LoadError[]>([]);
   const isAgency = organization?.org_type === 'agency';
-  const { clients, selectedId: brandSelectionId, setSelectedId: setBrandSelectionId } = useBrandDna(organization?.id, isAgency);
-  const selectedBrandName = brandSelectionId === SELF_BRAND_ID
-    ? organization?.name ?? 'Agency brand'
-    : clients.find((client) => client.id === brandSelectionId)?.name ?? 'Client brand';
+  const { clients } = useBrandDna(organization?.id, isAgency);
+  const selfBrandName = organization?.name ?? (isAgency ? 'Agency brand' : 'Business');
 
   useEffect(() => {
     let active = true;
@@ -150,29 +174,25 @@ export function AnalyticsPage() {
     };
   }, [organization?.id]);
 
-  const scopedCampaigns = useMemo(() => filterByBrand(campaigns, isAgency, brandSelectionId), [brandSelectionId, campaigns, isAgency]);
-  const scopedContentItems = useMemo(() => filterByBrand(contentItems, isAgency, brandSelectionId), [brandSelectionId, contentItems, isAgency]);
-  const scopedTasks = useMemo(() => filterByBrand(tasks, isAgency, brandSelectionId), [brandSelectionId, tasks, isAgency]);
-  const scopedSocialPosts = useMemo(() => filterByBrand(socialPosts, isAgency, brandSelectionId), [brandSelectionId, socialPosts, isAgency]);
-  const scopedMetrics = useMemo(() => filterByBrand(metrics, isAgency, brandSelectionId), [brandSelectionId, isAgency, metrics]);
+  const brandNameById = useMemo(() => buildBrandNameMap(clients, selfBrandName), [clients, selfBrandName]);
 
   const analytics = useMemo(() => {
-    const activeCampaigns = scopedCampaigns.filter((campaign) => campaign.status === 'active').length;
-    const approvedContent = scopedContentItems.filter((item) => approvedContentStatuses.includes(item.status)).length;
-    const posters = scopedContentItems.filter((item) => item.content_type === 'poster').length;
-    const publishedPosts = scopedSocialPosts.filter((post) => post.status === 'published').length;
-    const queuedPosts = scopedSocialPosts.filter((post) => post.status === 'queued' || post.status === 'publishing').length;
-    const openTasks = scopedTasks.filter((task) => !completedTaskStatuses.includes(task.status)).length;
-    const recurringTasks = scopedTasks.filter((task) => task.recurrence !== 'none').length;
-    const overdueTasks = scopedTasks.filter((task) => isOverdue(task)).length;
-    const reviewScores = scopedContentItems
+    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'active').length;
+    const approvedContent = contentItems.filter((item) => approvedContentStatuses.includes(item.status)).length;
+    const posters = contentItems.filter((item) => item.content_type === 'poster').length;
+    const publishedPosts = socialPosts.filter((post) => post.status === 'published').length;
+    const queuedPosts = socialPosts.filter((post) => post.status === 'queued' || post.status === 'publishing').length;
+    const openTasks = tasks.filter((task) => !completedTaskStatuses.includes(task.status)).length;
+    const recurringTasks = tasks.filter((task) => task.recurrence !== 'none').length;
+    const overdueTasks = tasks.filter((task) => isOverdue(task)).length;
+    const reviewScores = contentItems
       .map((item) => reviewScore(item.metadata))
       .filter((score): score is number => score !== null);
     const averageReviewScore = reviewScores.length > 0
       ? Math.round(reviewScores.reduce((total, score) => total + score, 0) / reviewScores.length)
       : null;
 
-    const totals = scopedMetrics.reduce(
+    const totals = metrics.reduce(
       (current, row) => ({
         spend: current.spend + Number(row.spend),
         impressions: current.impressions + Number(row.impressions),
@@ -180,7 +200,7 @@ export function AnalyticsPage() {
         conversions: current.conversions + Number(row.conversions),
         revenue: current.revenue + Number(row.revenue),
       }),
-      { spend: 0, impressions: 0, clicks: 0, conversions: 0, revenue: 0 },
+      { ...emptyTotals },
     );
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
     const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
@@ -202,34 +222,27 @@ export function AnalyticsPage() {
       roas,
       connectedSources,
     };
-  }, [scopedCampaigns, scopedContentItems, scopedMetrics, scopedSocialPosts, scopedTasks, sources]);
+  }, [campaigns, contentItems, metrics, socialPosts, sources, tasks]);
 
-  const campaignRollups = useMemo(() => buildCampaignRollups(scopedCampaigns, scopedContentItems, scopedTasks, scopedSocialPosts, scopedMetrics), [scopedCampaigns, scopedContentItems, scopedMetrics, scopedSocialPosts, scopedTasks]);
-  const sourceRollups = useMemo(() => buildSourceRollups(scopedMetrics, sources), [scopedMetrics, sources]);
-  const hasWorkflowData = scopedCampaigns.length + scopedContentItems.length + scopedTasks.length + scopedSocialPosts.length > 0;
-  const hasReportingData = scopedMetrics.length > 0;
+  const clientRollups = useMemo(
+    () => isAgency ? buildBrandRollups(clients, selfBrandName, campaigns, contentItems, tasks, socialPosts, metrics) : [],
+    [campaigns, clients, contentItems, isAgency, metrics, selfBrandName, socialPosts, tasks],
+  );
+  const campaignRollups = useMemo(() => buildCampaignRollups(campaigns, contentItems, tasks, socialPosts, metrics, brandNameById), [brandNameById, campaigns, contentItems, metrics, socialPosts, tasks]);
+  const sourceRollups = useMemo(() => buildSourceRollups(metrics, sources), [metrics, sources]);
+  const hasWorkflowData = campaigns.length + contentItems.length + tasks.length + socialPosts.length > 0;
+  const hasReportingData = metrics.length > 0;
 
   return (
     <div className="page-stack analytics-page">
       <header className="page-header">
         <div>
-          <p className="eyebrow">Measure</p>
+          <p className="eyebrow">{isAgency ? 'Agency portfolio' : 'Measure'}</p>
           <h2>Analytics Overview</h2>
         </div>
-        <div className="page-header-actions">
-          {isAgency ? (
-            <BrandDnaSelect
-              label="Overview for"
-              selfLabel={organization?.name ?? 'Agency brand'}
-              clients={clients}
-              value={brandSelectionId}
-              onChange={setBrandSelectionId}
-            />
-          ) : null}
-          <span className={hasReportingData || hasWorkflowData ? 'status-pill success' : 'status-pill warning'}>
-            {hasReportingData ? `${scopedMetrics.length} metric rows` : hasWorkflowData ? `Workflow data: ${selectedBrandName}` : 'No data yet'}
-          </span>
-        </div>
+        <span className={hasReportingData || hasWorkflowData ? 'status-pill success' : 'status-pill warning'}>
+          {hasReportingData ? `${metrics.length} metric rows` : hasWorkflowData ? (isAgency ? 'Agency workflow data' : 'Workflow data') : 'No data yet'}
+        </span>
       </header>
 
       {loading ? (
@@ -249,7 +262,7 @@ export function AnalyticsPage() {
             <article className="stat-card">
               <span>Active campaigns</span>
               <strong>{analytics.activeCampaigns}</strong>
-              <small>{scopedCampaigns.length} total campaigns</small>
+              <small>{campaigns.length} total campaigns</small>
             </article>
             <article className="stat-card">
               <span>Open tasks</span>
@@ -281,6 +294,49 @@ export function AnalyticsPage() {
             </article>
           </section>
 
+          {isAgency ? (
+            <section className="draft-panel saved-content-panel" aria-label="Client analytics">
+              <div className="section-heading content-library-heading">
+                <div>
+                  <p className="eyebrow">Clients</p>
+                  <h3>Client performance</h3>
+                </div>
+                <BarChart3 size={21} />
+              </div>
+
+              <div className="saved-content-list">
+                {clientRollups.length > 0 ? clientRollups.map((brand) => (
+                  <article className="saved-content-row analytics-row" key={brand.brandId}>
+                    <div className="saved-content-row__main">
+                      <strong>{brand.brandName}</strong>
+                      <div className="saved-content-row__meta">
+                        <span>{brand.activeCampaigns}/{brand.campaigns} active campaigns</span>
+                        <span>{brand.openTasks} open tasks</span>
+                        <span>{brand.livePosts} live posts</span>
+                      </div>
+                      <div className="campaign-metrics">
+                        <span><strong>{money(brand.spend)}</strong> spend</span>
+                        <span><strong>{money(brand.revenue)}</strong> revenue</span>
+                        <span><strong>{ratio(brand.revenue, brand.spend).toFixed(2)}x</strong> ROAS</span>
+                        <span><strong>{number(brand.clicks)}</strong> clicks</span>
+                        <span><strong>{number(brand.conversions)}</strong> conversions</span>
+                      </div>
+                    </div>
+                    <div className="saved-content-row__side">
+                      <small>CTR</small>
+                      <strong>{percentText(ratio(brand.clicks, brand.impressions))}</strong>
+                    </div>
+                  </article>
+                )) : (
+                  <div className="queue-empty">
+                    <BarChart3 size={20} />
+                    <span>Add client Business DNA or reporting rows to see client performance.</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : null}
+
           <section className="work-band analytics-health-grid">
             <article className="draft-panel analytics-health-card">
               <div className="section-heading">
@@ -291,9 +347,9 @@ export function AnalyticsPage() {
                 <CheckCircle2 size={21} />
               </div>
               <div className="analytics-meter">
-                <span style={{ width: `${percent(analytics.approvedContent, Math.max(scopedContentItems.length, 1))}%` }} />
+                <span style={{ width: `${percent(analytics.approvedContent, Math.max(contentItems.length, 1))}%` }} />
               </div>
-              <p>{analytics.approvedContent} of {scopedContentItems.length} saved assets are ready, queued, or published.</p>
+              <p>{analytics.approvedContent} of {contentItems.length} saved assets are ready, queued, or published.</p>
               <small>{analytics.posters} poster assets · {analytics.reviewScores} reviewed assets · average review {analytics.averageReviewScore ?? '—'}</small>
             </article>
 
@@ -306,9 +362,9 @@ export function AnalyticsPage() {
                 <CalendarDays size={21} />
               </div>
               <div className="analytics-meter warning">
-                <span style={{ width: `${percent(scopedTasks.length - analytics.openTasks, Math.max(scopedTasks.length, 1))}%` }} />
+                <span style={{ width: `${percent(tasks.length - analytics.openTasks, Math.max(tasks.length, 1))}%` }} />
               </div>
-              <p>{scopedTasks.length - analytics.openTasks} of {scopedTasks.length} tasks are approved, done, or archived.</p>
+              <p>{tasks.length - analytics.openTasks} of {tasks.length} tasks are approved, done, or archived.</p>
               <small>{analytics.overdueTasks > 0 ? `${analytics.overdueTasks} overdue tasks need attention.` : 'No overdue tasks found.'}</small>
             </article>
 
@@ -324,15 +380,15 @@ export function AnalyticsPage() {
                 <span style={{ width: `${Math.min(100, analytics.connectedSources * 25)}%` }} />
               </div>
               <p>{analytics.connectedSources} reporting sources are connected or syncing.</p>
-              <small>{hasReportingData ? `${scopedMetrics.length} daily metric rows loaded.` : 'Connect reporting sources to fill spend, clicks, and revenue.'}</small>
+              <small>{hasReportingData ? `${metrics.length} daily metric rows loaded.` : 'Connect reporting sources to fill spend, clicks, and revenue.'}</small>
             </article>
           </section>
 
           <section className="draft-panel saved-content-panel" aria-label="Campaign analytics">
             <div className="section-heading content-library-heading">
               <div>
-                <p className="eyebrow">Campaign view</p>
-                <h3>Campaign health board</h3>
+                <p className="eyebrow">Campaigns</p>
+                <h3>{isAgency ? 'Agency-wide campaign KPIs' : 'Campaign KPIs'}</h3>
               </div>
               <Target size={21} />
             </div>
@@ -343,6 +399,7 @@ export function AnalyticsPage() {
                   <div className="saved-content-row__main">
                     <strong>{campaign.name}</strong>
                     <div className="saved-content-row__meta">
+                      {isAgency ? <span>{campaign.brandName}</span> : null}
                       <span>{campaign.status}</span>
                       <span>Updated {formatDate(campaign.updatedAt)}</span>
                     </div>
@@ -352,6 +409,9 @@ export function AnalyticsPage() {
                       <span><strong>{campaign.livePosts}</strong> live posts</span>
                       <span><strong>{money(campaign.spend)}</strong> spend</span>
                       <span><strong>{money(campaign.revenue)}</strong> revenue</span>
+                      <span><strong>{ratio(campaign.revenue, campaign.spend).toFixed(2)}x</strong> ROAS</span>
+                      <span><strong>{number(campaign.clicks)}</strong> clicks</span>
+                      <span><strong>{number(campaign.conversions)}</strong> conversions</span>
                     </div>
                   </div>
                   <div className="saved-content-row__side">
@@ -410,12 +470,15 @@ function buildCampaignRollups(
   tasks: MarketingTaskRow[],
   socialPosts: SocialPostRow[],
   metrics: AnalyticsMetricRow[],
+  brandNameById: Map<string, string>,
 ): CampaignRollup[] {
   const map = new Map<string, CampaignRollup>();
   for (const campaign of campaigns) {
     map.set(campaign.id, {
       id: campaign.id,
       name: campaign.name,
+      brandId: brandKey(campaign.client_business_dna_id),
+      brandName: brandNameById.get(brandKey(campaign.client_business_dna_id)) ?? 'Client brand',
       status: campaign.status,
       updatedAt: campaign.updated_at,
       content: 0,
@@ -425,6 +488,9 @@ function buildCampaignRollups(
       posts: 0,
       livePosts: 0,
       spend: 0,
+      impressions: 0,
+      clicks: 0,
+      conversions: 0,
       revenue: 0,
     });
   }
@@ -447,21 +513,98 @@ function buildCampaignRollups(
     if (livePostStatuses.includes(post.status)) rollup.livePosts += 1;
   }
 
+  const byBrandAndName = new Map(Array.from(map.values()).map((campaign) => [`${campaign.brandId}:${campaign.name.toLocaleLowerCase()}`, campaign]));
   const byName = new Map(Array.from(map.values()).map((campaign) => [campaign.name.toLocaleLowerCase(), campaign]));
   for (const row of metrics) {
-    const rollup = byName.get(row.campaign.toLocaleLowerCase());
+    const rowBrandKey = brandKey(row.client_business_dna_id);
+    const rollup = byBrandAndName.get(`${rowBrandKey}:${row.campaign.toLocaleLowerCase()}`) ?? byName.get(row.campaign.toLocaleLowerCase());
     if (!rollup) continue;
     rollup.spend += Number(row.spend);
+    rollup.impressions += Number(row.impressions);
+    rollup.clicks += Number(row.clicks);
+    rollup.conversions += Number(row.conversions);
     rollup.revenue += Number(row.revenue);
   }
 
-  return Array.from(map.values()).sort((a, b) => campaignReadiness(b) - campaignReadiness(a));
+  return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue || b.spend - a.spend || campaignReadiness(b) - campaignReadiness(a));
 }
 
-function filterByBrand<T extends { client_business_dna_id: string | null }>(rows: T[], isAgency: boolean, brandSelectionId: string) {
-  if (!isAgency) return rows;
-  if (brandSelectionId === SELF_BRAND_ID) return rows.filter((row) => !row.client_business_dna_id);
-  return rows.filter((row) => row.client_business_dna_id === brandSelectionId);
+function buildBrandRollups(
+  clients: ClientBusinessDnaRow[],
+  selfBrandName: string,
+  campaigns: CampaignRow[],
+  contentItems: ContentItemRow[],
+  tasks: MarketingTaskRow[],
+  socialPosts: SocialPostRow[],
+  metrics: AnalyticsMetricRow[],
+): BrandRollup[] {
+  const map = new Map<string, BrandRollup>();
+  const ensure = (brandId: string, brandName: string) => {
+    const existing = map.get(brandId);
+    if (existing) return existing;
+    const next: BrandRollup = {
+      brandId,
+      brandName,
+      campaigns: 0,
+      activeCampaigns: 0,
+      content: 0,
+      approvedContent: 0,
+      openTasks: 0,
+      livePosts: 0,
+      ...emptyTotals,
+    };
+    map.set(brandId, next);
+    return next;
+  };
+
+  ensure(SELF_BRAND_ID, selfBrandName);
+  for (const client of clients) ensure(client.id, client.name);
+
+  for (const campaign of campaigns) {
+    const rollup = ensure(brandKey(campaign.client_business_dna_id), brandNameForClientId(campaign.client_business_dna_id, clients, selfBrandName));
+    rollup.campaigns += 1;
+    if (campaign.status === 'active') rollup.activeCampaigns += 1;
+  }
+  for (const item of contentItems) {
+    const rollup = ensure(brandKey(item.client_business_dna_id), brandNameForClientId(item.client_business_dna_id, clients, selfBrandName));
+    rollup.content += 1;
+    if (approvedContentStatuses.includes(item.status)) rollup.approvedContent += 1;
+  }
+  for (const task of tasks) {
+    const rollup = ensure(brandKey(task.client_business_dna_id), brandNameForClientId(task.client_business_dna_id, clients, selfBrandName));
+    if (!completedTaskStatuses.includes(task.status)) rollup.openTasks += 1;
+  }
+  for (const post of socialPosts) {
+    const rollup = ensure(brandKey(post.client_business_dna_id), brandNameForClientId(post.client_business_dna_id, clients, selfBrandName));
+    if (livePostStatuses.includes(post.status)) rollup.livePosts += 1;
+  }
+  for (const metric of metrics) {
+    const rollup = ensure(brandKey(metric.client_business_dna_id), brandNameForClientId(metric.client_business_dna_id, clients, selfBrandName));
+    rollup.spend += Number(metric.spend);
+    rollup.impressions += Number(metric.impressions);
+    rollup.clicks += Number(metric.clicks);
+    rollup.conversions += Number(metric.conversions);
+    rollup.revenue += Number(metric.revenue);
+  }
+
+  return Array.from(map.values())
+    .filter((rollup) => rollup.brandId !== SELF_BRAND_ID || rollup.campaigns + rollup.content + rollup.openTasks + rollup.livePosts + rollup.spend + rollup.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue || b.spend - a.spend || b.campaigns - a.campaigns || a.brandName.localeCompare(b.brandName));
+}
+
+function buildBrandNameMap(clients: ClientBusinessDnaRow[], selfBrandName: string) {
+  const map = new Map<string, string>([[SELF_BRAND_ID, selfBrandName]]);
+  for (const client of clients) map.set(client.id, client.name);
+  return map;
+}
+
+function brandKey(clientBusinessDnaId: string | null) {
+  return clientBusinessDnaId ?? SELF_BRAND_ID;
+}
+
+function brandNameForClientId(clientBusinessDnaId: string | null, clients: ClientBusinessDnaRow[], selfBrandName: string) {
+  if (!clientBusinessDnaId) return selfBrandName;
+  return clients.find((client) => client.id === clientBusinessDnaId)?.name ?? 'Client brand';
 }
 
 function buildSourceRollups(metrics: AnalyticsMetricRow[], sources: AnalyticsSourceRow[]) {
@@ -533,6 +676,14 @@ function loadError(area: string, error: unknown): LoadError | null {
 function percent(value: number, total: number) {
   if (total <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
+}
+
+function ratio(value: number, total: number) {
+  return total > 0 ? value / total : 0;
+}
+
+function percentText(value: number) {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function money(value: number) {
