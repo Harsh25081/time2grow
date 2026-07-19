@@ -27,6 +27,7 @@ import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useB
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 type ContentItemRow = Database['public']['Tables']['content_items']['Row'];
+type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type ContentStatus = ContentItemRow['status'];
 
 type CreatorMode = 'post' | 'video';
@@ -225,8 +226,10 @@ const initialForm: CreatorForm = {
 export function ContentCreatorPage() {
   const { organization, user, membership } = useAuth();
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [contentItems, setContentItems] = useState<ContentItemRow[]>([]);
   const [form, setForm] = useState<CreatorForm>(initialForm);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [generated, setGenerated] = useState<GeneratedContent | null>(null);
   const [visual, setVisual] = useState<PostVisual | null>(null);
   const [savedMediaUrl, setSavedMediaUrl] = useState('');
@@ -257,13 +260,25 @@ export function ContentCreatorPage() {
 
       if (!supabase || !organization?.id) {
         setBusinessDna(null);
+        setCampaigns([]);
         setContentItems([]);
         setLoading(false);
         return;
       }
 
-      const [{ data: dnaData, error: dnaError }, { data: contentData, error: contentError }] = await Promise.all([
+      const [
+        { data: dnaData, error: dnaError },
+        { data: campaignData, error: campaignError },
+        { data: contentData, error: contentError },
+      ] = await Promise.all([
         supabase.from('business_dna').select('*').eq('org_id', organization.id).maybeSingle(),
+        supabase
+          .from('campaigns')
+          .select('id, name, status, client_business_dna_id')
+          .eq('org_id', organization.id)
+          .neq('status', 'archived')
+          .order('updated_at', { ascending: false })
+          .limit(100),
         supabase
           .from('content_items')
           .select('*')
@@ -277,9 +292,11 @@ export function ContentCreatorPage() {
       if (!active) return;
 
       if (dnaError) setError(errorMessage(dnaError, 'Could not load Business DNA.'));
+      if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
       if (contentError) setError(errorMessage(contentError, 'Could not load saved content.'));
 
       setBusinessDna(dnaData ?? null);
+      setCampaigns(campaignData ?? []);
       setContentItems(contentData ?? []);
       setLoading(false);
     }
@@ -291,6 +308,16 @@ export function ContentCreatorPage() {
   }, [organization?.id]);
 
   const postVariant = generated?.kind === 'post' ? generated.variants[0] ?? null : null;
+  const campaignOptions = useMemo(
+    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, brandSelectionId)),
+    [brandSelectionId, campaigns, isAgency],
+  );
+
+  useEffect(() => {
+    if (selectedCampaignId && !campaignOptions.some((campaign) => campaign.id === selectedCampaignId)) {
+      setSelectedCampaignId('');
+    }
+  }, [campaignOptions, selectedCampaignId]);
 
   const contentCounts = useMemo(() => {
     const counts = new Map<LibraryFilter, number>([['all', contentItems.length]]);
@@ -479,6 +506,7 @@ export function ContentCreatorPage() {
         .insert({
           org_id: organization.id,
           client_business_dna_id: selectedClient?.id ?? null,
+          campaign_id: selectedCampaignId || null,
           content_type: generated.kind === 'video' ? 'video' : 'post',
           title,
           body: renderContentToText(generated),
@@ -487,7 +515,7 @@ export function ContentCreatorPage() {
             source: selectedClient ? 'client_business_dna' : 'business_dna',
             clientBusinessDnaId: selectedClient?.id ?? null,
             name: selectedBrandName,
-          }),
+          }, selectedCampaignId || null),
           status: 'ready',
           created_by: user.id,
         })
@@ -511,6 +539,7 @@ export function ContentCreatorPage() {
 
     setForm((current) => ({ ...current, mode: item.content_type === 'video' ? 'video' : 'post' }));
     if (isAgency) setBrandSelectionId(item.client_business_dna_id ?? SELF_BRAND_ID);
+    setSelectedCampaignId(item.campaign_id ?? '');
     setVisual(null);
     setSavedMediaUrl(item.media_url ?? '');
 
@@ -740,6 +769,12 @@ export function ContentCreatorPage() {
                   onChange={setBrandSelectionId}
                 />
               ) : null}
+
+              <CampaignSelect
+                campaigns={campaignOptions}
+                value={selectedCampaignId}
+                onChange={setSelectedCampaignId}
+              />
 
               <label className="draft-body-field">
                 <span>{form.mode === 'post' ? 'Post brief' : 'Script brief'}</span>
@@ -1136,6 +1171,26 @@ function ReviewSummary({ review }: { review: ReviewResult | null }) {
   );
 }
 
+function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <label>
+      <span>Campaign</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">No campaign selected</option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function campaignMatchesBrand(campaign: CampaignRow, isAgency: boolean, brandSelectionId: string) {
+  if (!isAgency) return true;
+  if (brandSelectionId === SELF_BRAND_ID) return !campaign.client_business_dna_id;
+  return campaign.client_business_dna_id === brandSelectionId;
+}
+
 function itemViralityScore(metadata: Json | null): number | null {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
   const virality = (metadata as Record<string, unknown>).virality;
@@ -1312,9 +1367,11 @@ function buildMetadata(
   content: GeneratedContent,
   visual: PostVisual | null,
   brand: { source: 'business_dna' | 'client_business_dna'; clientBusinessDnaId: string | null; name: string },
+  campaignId: string | null,
 ): Json {
   const base = { ...content } as unknown as Record<string, Json>;
   base.brand = brand as unknown as Json;
+  if (campaignId) base.campaignId = campaignId;
   if (visual) base.visual = { imagePrompt: visual.imagePrompt, format: visual.format };
   return base as Json;
 }

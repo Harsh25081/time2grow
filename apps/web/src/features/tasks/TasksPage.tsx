@@ -16,6 +16,7 @@ import type { Database, Json } from '../../types/database';
 import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
 type MarketingTaskRow = Database['public']['Tables']['marketing_tasks']['Row'];
+type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type TaskType = MarketingTaskRow['task_type'];
 type TaskStatus = MarketingTaskRow['status'];
 
@@ -74,6 +75,7 @@ const nextStatus: Partial<Record<TaskStatus, TaskStatus>> = {
 type TaskForm = {
   title: string;
   brandSelectionId: string;
+  campaignId: string;
   taskType: TaskType;
   description: string;
   dueAt: string;
@@ -84,6 +86,7 @@ type TaskForm = {
 const emptyForm: TaskForm = {
   title: '',
   brandSelectionId: SELF_BRAND_ID,
+  campaignId: '',
   taskType: 'publish_reel',
   description: '',
   dueAt: '',
@@ -94,6 +97,7 @@ const emptyForm: TaskForm = {
 export function TasksPage() {
   const { organization, user, membership } = useAuth();
   const [tasks, setTasks] = useState<MarketingTaskRow[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [form, setForm] = useState<TaskForm>(emptyForm);
   const [editingId, setEditingId] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -107,6 +111,7 @@ export function TasksPage() {
   const isAgency = organization?.org_type === 'agency';
   const { clients } = useBrandDna(organization?.id, isAgency);
   const clientNameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
+  const campaignNameById = useMemo(() => new Map(campaigns.map((campaign) => [campaign.id, campaign.name])), [campaigns]);
 
   useEffect(() => {
     let active = true;
@@ -117,22 +122,34 @@ export function TasksPage() {
 
       if (!supabase || !organization?.id) {
         setTasks([]);
+        setCampaigns([]);
         setLoading(false);
         return;
       }
 
-      const { data, error: loadError } = await supabase
-        .from('marketing_tasks')
-        .select('*')
-        .eq('org_id', organization.id)
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
-        .limit(100);
+      const [{ data, error: loadError }, { data: campaignData, error: campaignError }] = await Promise.all([
+        supabase
+          .from('marketing_tasks')
+          .select('*')
+          .eq('org_id', organization.id)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: false })
+          .limit(100),
+        supabase
+          .from('campaigns')
+          .select('id, name, status, client_business_dna_id')
+          .eq('org_id', organization.id)
+          .neq('status', 'archived')
+          .order('updated_at', { ascending: false })
+          .limit(100),
+      ]);
 
       if (!active) return;
 
       if (loadError) setError(errorMessage(loadError, 'Could not load tasks.'));
+      if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
       setTasks(data ?? []);
+      setCampaigns(campaignData ?? []);
       setLoading(false);
     }
 
@@ -152,6 +169,17 @@ export function TasksPage() {
     if (statusFilter === 'all') return tasks;
     return tasks.filter((task) => task.status === statusFilter);
   }, [tasks, statusFilter]);
+
+  const campaignOptions = useMemo(
+    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, form.brandSelectionId)),
+    [campaigns, form.brandSelectionId, isAgency],
+  );
+
+  useEffect(() => {
+    if (form.campaignId && !campaignOptions.some((campaign) => campaign.id === form.campaignId)) {
+      updateForm('campaignId', '');
+    }
+  }, [campaignOptions, form.campaignId]);
 
   function updateForm<K extends keyof TaskForm>(key: K, value: TaskForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -189,6 +217,7 @@ export function TasksPage() {
     setForm({
       title: task.title,
       brandSelectionId: task.client_business_dna_id ?? SELF_BRAND_ID,
+      campaignId: task.campaign_id ?? '',
       taskType: task.task_type,
       description: task.description ?? '',
       dueAt: task.due_at ? task.due_at.slice(0, 10) : '',
@@ -236,6 +265,7 @@ export function TasksPage() {
     const payload = {
       title: form.title.trim(),
       client_business_dna_id: isAgency && form.brandSelectionId !== SELF_BRAND_ID ? form.brandSelectionId : null,
+      campaign_id: form.campaignId || null,
       task_type: form.taskType,
       description: form.description.trim() || null,
       expected_outputs: form.expectedOutputs.trim() || null,
@@ -354,6 +384,12 @@ export function TasksPage() {
                 />
               ) : null}
 
+              <CampaignSelect
+                campaigns={campaignOptions}
+                value={form.campaignId}
+                onChange={(id) => updateForm('campaignId', id)}
+              />
+
               <label className="draft-body-field">
                 <span>Description</span>
                 <textarea value={form.description} onChange={(event) => updateForm('description', event.target.value)} rows={3} placeholder="Optional context or brief" />
@@ -442,6 +478,7 @@ export function TasksPage() {
                       <div className="saved-content-row__meta">
                         <span>{taskTypeLabel(task.task_type)}</span>
                         {isAgency ? <span>{task.client_business_dna_id ? clientNameById.get(task.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
+                        {task.campaign_id ? <span>{campaignNameById.get(task.campaign_id) ?? 'Campaign'}</span> : null}
                         <span>{statusLabel(task.status)}</span>
                         {checklist.length > 0 ? <span>{doneCount}/{checklist.length} done</span> : null}
                         {task.due_at ? <span>Due {formatDate(task.due_at)}</span> : null}
@@ -521,6 +558,26 @@ function parseChecklist(value: Json | null): ChecklistItem[] {
       return { label, done: record.done === true };
     })
     .filter((item): item is ChecklistItem => Boolean(item));
+}
+
+function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <label>
+      <span>Campaign</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">No campaign selected</option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function campaignMatchesBrand(campaign: CampaignRow, isAgency: boolean, brandSelectionId: string) {
+  if (!isAgency) return true;
+  if (brandSelectionId === SELF_BRAND_ID) return !campaign.client_business_dna_id;
+  return campaign.client_business_dna_id === brandSelectionId;
 }
 
 function taskTypeLabel(value: TaskType) {

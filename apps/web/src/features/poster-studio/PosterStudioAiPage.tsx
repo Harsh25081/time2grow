@@ -5,7 +5,7 @@ import { toPng } from 'html-to-image';
 import { env } from '../../lib/env';
 import { supabase } from '../../lib/supabase';
 import { deriveBrandDisplayName } from '../business-dna/brandIdentity';
-import { useBrandDna, BrandDnaSelect } from '../business-dna/useBrandDna';
+import { useBrandDna, BrandDnaSelect, SELF_BRAND_ID } from '../business-dna/useBrandDna';
 import type { ClientBusinessDnaRow } from '../business-dna/brandDna';
 import { useAuth } from '../auth/AuthProvider';
 import type { Database, Json } from '../../types/database';
@@ -22,6 +22,7 @@ import {
 } from './PosterTemplate';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
+type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type PosterLanguage = 'en' | 'te' | 'hi';
 type ContactKey = 'website' | 'phone' | 'email';
 type ContactDetails = Record<ContactKey, string>;
@@ -93,6 +94,8 @@ export function PosterStudioAiPage() {
   const { organization, user, membership } = useAuth();
   const canWrite = membership?.role === 'owner' || membership?.role === 'admin' || membership?.role === 'editor';
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [logoDisplayUrl, setLogoDisplayUrl] = useState('');
   const [logoIsCutout, setLogoIsCutout] = useState(false);
@@ -139,25 +142,41 @@ export function PosterStudioAiPage() {
   const usingAi = aiPosters.length > 0;
   const selectedAiPoster = useMemo(() => aiPosters.find((poster) => poster.id === selectedId) ?? aiPosters[0] ?? null, [aiPosters, selectedId]);
   const posterMemoryKey = organization?.id || user?.id || 'local';
+  const campaignOptions = useMemo(
+    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, brandSelectionId)),
+    [brandSelectionId, campaigns, isAgency],
+  );
 
   useEffect(() => {
     let active = true;
 
     async function load() {
       if (!supabase || !organization?.id) {
+        setCampaigns([]);
         setLoading(false);
         return;
       }
 
-      const { data, error: dnaError } = await supabase
-        .from('business_dna')
-        .select('*')
-        .eq('org_id', organization.id)
-        .maybeSingle();
+      const [{ data, error: dnaError }, { data: campaignData, error: campaignError }] = await Promise.all([
+        supabase
+          .from('business_dna')
+          .select('*')
+          .eq('org_id', organization.id)
+          .maybeSingle(),
+        supabase
+          .from('campaigns')
+          .select('id, name, status, client_business_dna_id')
+          .eq('org_id', organization.id)
+          .neq('status', 'archived')
+          .order('updated_at', { ascending: false })
+          .limit(100),
+      ]);
 
       if (!active) return;
       if (dnaError) setError(errorMessage(dnaError, 'Could not load Business DNA.'));
+      if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
       setBusinessDna(data ?? null);
+      setCampaigns(campaignData ?? []);
       setLoading(false);
     }
 
@@ -166,6 +185,12 @@ export function PosterStudioAiPage() {
       active = false;
     };
   }, [organization?.id]);
+
+  useEffect(() => {
+    if (selectedCampaignId && !campaignOptions.some((campaign) => campaign.id === selectedCampaignId)) {
+      setSelectedCampaignId('');
+    }
+  }, [campaignOptions, selectedCampaignId]);
 
   // Sign the SELECTED brand's logo/QR (our own or a client's) whenever the
   // selection changes, so the overlays reflect whichever brand this poster is for.
@@ -532,6 +557,7 @@ export function PosterStudioAiPage() {
       .insert({
         org_id: organization.id,
         client_business_dna_id: selectedClient?.id ?? null,
+        campaign_id: selectedCampaignId || null,
         content_type: 'poster',
         title,
         body,
@@ -541,6 +567,7 @@ export function PosterStudioAiPage() {
             source: selectedClient ? 'client_business_dna' : 'business_dna',
             clientBusinessDnaId: selectedClient?.id ?? null,
             name: brandName,
+            campaignId: selectedCampaignId || null,
           },
         },
         status: 'ready',
@@ -656,6 +683,11 @@ export function PosterStudioAiPage() {
                 onChange={setBrandSelectionId}
               />
             ) : null}
+            <CampaignSelect
+              campaigns={campaignOptions}
+              value={selectedCampaignId}
+              onChange={setSelectedCampaignId}
+            />
             <label className="poster-field">
               <span>Your request</span>
               <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={4} placeholder="Describe the poster you want, e.g. Diwali wishes from AD96, or a bold laundry service offer" />
@@ -899,6 +931,26 @@ export function PosterStudioAiPage() {
       )}
     </div>
   );
+}
+
+function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow[]; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="poster-field">
+      <span>Campaign</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">No campaign selected</option>
+        {campaigns.map((campaign) => (
+          <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function campaignMatchesBrand(campaign: CampaignRow, isAgency: boolean, brandSelectionId: string) {
+  if (!isAgency) return true;
+  if (brandSelectionId === SELF_BRAND_ID) return !campaign.client_business_dna_id;
+  return campaign.client_business_dna_id === brandSelectionId;
 }
 
 async function requestAiPoster(params: {
