@@ -190,6 +190,16 @@ requirePattern(
   /meta_ads[\s\S]*google_ads[\s\S]*tiktok_ads[\s\S]*linkedin_ads[\s\S]*youtube[\s\S]*shopify/,
 );
 requirePattern(
+  'Analytics reporting page shows platform KPIs and visuals',
+  'apps/web/src/features/analytics/AnalyticsReportingPage.tsx',
+  /Platform[\s\S]*All platforms[\s\S]*Spend[\s\S]*Revenue[\s\S]*Performance over time[\s\S]*Platform performance[\s\S]*Top campaigns/,
+);
+rejectPattern(
+  'Analytics reporting page does not show implementation details',
+  'apps/web/src/features/analytics/AnalyticsReportingPage.tsx',
+  /One reporting table|Cross-platform reporting|ReportingSourcesPanel/,
+);
+requirePattern(
   'Connections exposes Shopify reporting source',
   'apps/web/src/features/connections/ConnectionsPage.tsx',
   /ReportingSourcesPanel[\s\S]*Shopify[\s\S]*Analytics can query/,
