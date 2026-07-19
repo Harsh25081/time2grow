@@ -1661,6 +1661,13 @@ a {
   opacity: 0.58;
 }
 
+.connection-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .connection-status {
   border-radius: 999px;
   padding: 5px 8px;

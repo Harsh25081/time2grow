@@ -34,6 +34,13 @@ type AddHandleForm = {
   status: HandleStatus;
 };
 
+type DiscoveryResponse = {
+  imported?: number;
+  message?: string;
+};
+
+const discoverableProviders = new Set<Provider>(['facebook', 'instagram', 'linkedin', 'youtube', 'slack', 'whatsapp']);
+
 export function ConnectionsPage() {
   const { organization, user, membership } = useAuth();
   const canManageConnections = membership?.role === 'owner' || membership?.role === 'admin';
@@ -44,6 +51,7 @@ export function ConnectionsPage() {
   const [connectionMessage, setConnectionMessage] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<Provider | null>(null);
+  const [discoveringProvider, setDiscoveringProvider] = useState<Provider | null>(null);
   const [formMessage, setFormMessage] = useState('');
   const [formError, setFormError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -165,6 +173,59 @@ export function ConnectionsPage() {
     }
   }
 
+  function canDiscoverProvider(provider: Provider, connection: ConnectionStatus | undefined) {
+    if (!discoverableProviders.has(provider) || !connection?.secretsConfigured) return false;
+    if (connection.status === 'connected') return true;
+    if (connection.authMode === 'server_token') return true;
+    if (provider === 'instagram') return connectionByProvider.get('facebook')?.status === 'connected';
+    return false;
+  }
+
+  async function handleDiscoverProvider(provider: Provider) {
+    setConnectionMessage('');
+    setConnectionError('');
+
+    if (!canManageConnections) {
+      setConnectionError('Ask a workspace owner or admin to discover handles.');
+      return;
+    }
+
+    if (!supabase || !organization?.id) {
+      setConnectionError('Connect Supabase before discovering handles.');
+      return;
+    }
+
+    setDiscoveringProvider(provider);
+    try {
+      const { data, error } = await supabase.functions.invoke('social-discover-handles', {
+        body: { orgId: organization.id, provider },
+      });
+      if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-discover-handles'));
+      const result = normalizeDiscoveryResponse(data);
+      setConnectionMessage(result.message || `${result.imported ?? 0} handle${result.imported === 1 ? '' : 's'} imported.`);
+      await reloadHandlesAndStatus();
+    } catch (error) {
+      setConnectionError(errorMessage(error, `Could not discover ${channelName(provider)} handles.`));
+    } finally {
+      setDiscoveringProvider(null);
+    }
+  }
+
+  async function reloadHandlesAndStatus() {
+    if (!supabase || !organization?.id) return;
+    const { data, error } = await supabase
+      .from('distribution_handles')
+      .select('*')
+      .eq('org_id', organization.id)
+      .eq('is_enabled', true)
+      .order('created_at', { ascending: false });
+
+    if (error) setFormError(errorMessage(error, 'Could not reload saved handles.'));
+    else setAccountHandles((data ?? []).map(mapRowToHandle));
+
+    await loadConnectionStatus();
+  }
+
   async function handleAddHandle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormMessage('');
@@ -258,6 +319,7 @@ export function ConnectionsPage() {
           <div>
             <p className="eyebrow">Connections</p>
             <h3>Accounts</h3>
+            <p className="section-description">Use these for publishing. Connect a platform account, then discover handles to import available pages, channels, or destinations automatically.</p>
           </div>
           <button type="button" className="icon-text-button" onClick={loadConnectionStatus} disabled={connectionsLoading}>
             <RefreshCw size={16} className={connectionsLoading ? 'spin' : ''} />
@@ -271,6 +333,8 @@ export function ConnectionsPage() {
             const Icon = channel.icon;
             const connected = connection?.status === 'connected';
             const connecting = connectingProvider === channel.provider;
+            const discovering = discoveringProvider === channel.provider;
+            const discoveryAvailable = canDiscoverProvider(channel.provider, connection);
 
             return (
               <article className={`connection-card ${connected ? 'is-connected' : ''}`} key={channel.provider}>
@@ -284,9 +348,14 @@ export function ConnectionsPage() {
                 </div>
                 <div className="connection-card__bottom">
                   <span>{connection?.handleCount ?? accountHandles.filter((handle) => handle.provider === channel.provider && handle.persisted).length} handles</span>
-                  <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={!canManageConnections || connecting || connectionsLoading} title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : undefined}>
-                    {connecting ? 'Connecting' : connectionActionText(connection)}
-                  </button>
+                  <div className="connection-card__actions">
+                    <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={!canManageConnections || connecting || connectionsLoading || discovering} title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : undefined}>
+                      {connecting ? 'Connecting' : connectionActionText(connection)}
+                    </button>
+                    <button type="button" onClick={() => handleDiscoverProvider(channel.provider)} disabled={!canManageConnections || !discoveryAvailable || discovering || connecting || connectionsLoading} title={!discoveryAvailable ? 'Connect this provider first, then discover handles' : undefined}>
+                      {discovering ? 'Discovering' : 'Discover handles'}
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -402,4 +471,13 @@ function providerHandlePlaceholder(provider: Provider) {
     telegram: 'Telegram chat/channel ID',
   };
   return placeholders[provider];
+}
+
+function normalizeDiscoveryResponse(value: unknown): DiscoveryResponse {
+  if (!value || typeof value !== 'object') return {};
+  const record = value as Record<string, unknown>;
+  return {
+    imported: typeof record.imported === 'number' ? record.imported : undefined,
+    message: typeof record.message === 'string' ? record.message : undefined,
+  };
 }
