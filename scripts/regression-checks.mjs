@@ -164,6 +164,16 @@ requirePattern(
   'apps/web/src/app/AppShell.tsx',
   /CampaignsPage[\s\S]*to: '\/campaigns'[\s\S]*path="\/campaigns"/,
 );
+requirePattern(
+  'Campaign work modules sit under Campaigns',
+  'apps/web/src/app/AppShell.tsx',
+  /campaignNav[\s\S]*\/campaigns\/content[\s\S]*\/campaigns\/posters[\s\S]*\/campaigns\/tasks[\s\S]*\/campaigns\/social[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,
+);
+requirePattern(
+  'Connections sits under Settings',
+  'apps/web/src/app/AppShell.tsx',
+  /settingsNav[\s\S]*\/settings\/connections[\s\S]*path="\/connections" element=\{<Navigate to="\/settings\/connections"/,
+);
 
 requirePattern(
   'feature pages are route-level lazy chunks',

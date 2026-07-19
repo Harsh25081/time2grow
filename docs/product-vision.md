@@ -66,9 +66,11 @@ One operational view across the workspace and its clients:
 
 ## Where we are today
 
-Live pages: Business DNA, Content Studio, Poster AI, Connections, Social Hub, Campaigns, and Tasks.
-The Home dashboard has early live stats. Leads / Inbox / Settings are stubs; analytics, competitors,
-maya, and trends are empty folders.
+Live pages: Business DNA, Campaigns, Content Studio, Poster AI, Social Hub, Tasks, and Settings /
+Connections. Campaigns is the main operating tree; Content, AI Posters, Social, and Tasks sit under
+it. Connections is workspace configuration under Settings. The Home dashboard has early live stats.
+Leads / Inbox / Settings overview are stubs; analytics, competitors, maya, and trends are empty
+folders.
 
 Existing org-scoped tables (RLS via `is_org_member` / `has_org_role`): profiles, organizations,
 memberships, invitations, business_dna, client_business_dna, campaigns, content_items, social_posts,

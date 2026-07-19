@@ -43,24 +43,36 @@ type NavItem = {
   to: string;
   label: string;
   icon: typeof Home;
+  end?: boolean;
 };
 
-const primaryNav: NavItem[] = [
-  { to: '/', label: 'Home', icon: Home },
+const workspaceNav: NavItem[] = [
+  { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/business-dna', label: 'Business DNA', icon: Dna },
-  { to: '/content', label: 'Content', icon: Sparkles },
-  { to: '/poster-ai', label: 'AI Posters', icon: Sparkles },
-  { to: '/connections', label: 'Connections', icon: Link2 },
-  { to: '/social', label: 'Social', icon: Send },
-  { to: '/campaigns', label: 'Campaigns', icon: Target },
-  { to: '/tasks', label: 'Tasks', icon: CalendarDays },
-  { to: '/leads', label: 'Leads', icon: Target },
-  { to: '/inbox', label: 'Inbox', icon: Inbox },
-  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
-const mobilePrimaryNav = primaryNav.filter((item) => ['/', '/business-dna', '/content', '/poster-ai', '/social'].includes(item.to));
-const mobileMoreNav = primaryNav.filter((item) => !mobilePrimaryNav.includes(item));
+const campaignNav: NavItem[] = [
+  { to: '/campaigns/content', label: 'Content', icon: Sparkles },
+  { to: '/campaigns/posters', label: 'AI Posters', icon: Sparkles },
+  { to: '/campaigns/tasks', label: 'Tasks', icon: CalendarDays },
+  { to: '/campaigns/social', label: 'Social', icon: Send },
+];
+
+const settingsNav: NavItem[] = [
+  { to: '/settings/connections', label: 'Connections', icon: Link2 },
+];
+
+const laterNav: NavItem[] = [
+  { to: '/leads', label: 'Leads', icon: Target },
+  { to: '/inbox', label: 'Inbox', icon: Inbox },
+];
+
+const mobilePrimaryNav: NavItem[] = [
+  ...workspaceNav,
+  { to: '/campaigns', label: 'Campaigns', icon: Target },
+  { to: '/settings', label: 'Settings', icon: Settings },
+];
+const mobileMoreNav: NavItem[] = [...campaignNav, ...settingsNav, ...laterNav];
 
 const modules = [
   {
@@ -162,12 +174,40 @@ export function AppShell() {
         </div>
 
         <nav className="desktop-nav">
-          {primaryNav.map((item) => (
-            <NavLink key={item.to} to={item.to} end={item.to === '/'} className="nav-item">
+          {workspaceNav.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end} className="nav-item">
               <item.icon size={19} />
               <span>{item.label}</span>
             </NavLink>
           ))}
+          <div className="nav-section">
+            <NavLink to="/campaigns" className="nav-item nav-item--parent">
+              <Target size={19} />
+              <span>Campaigns</span>
+            </NavLink>
+            <div className="nav-children" aria-label="Campaign sections">
+              {campaignNav.map((item) => (
+                <NavLink key={item.to} to={item.to} className="nav-item nav-item--child">
+                  <item.icon size={17} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+          <div className="nav-section">
+            <NavLink to="/settings" className="nav-item nav-item--parent">
+              <Settings size={19} />
+              <span>Settings</span>
+            </NavLink>
+            <div className="nav-children" aria-label="Settings sections">
+              {settingsNav.map((item) => (
+                <NavLink key={item.to} to={item.to} className="nav-item nav-item--child">
+                  <item.icon size={17} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
         </nav>
 
         <div className="sidebar-footer">
@@ -197,16 +237,21 @@ export function AppShell() {
             }
           />
           <Route path="/business-dna" element={<BusinessDnaPage />} />
-          <Route path="/content" element={<ContentCreatorPage />} />
-          <Route path="/poster" element={<Navigate to="/poster-ai" replace />} />
-          <Route path="/poster-ai" element={<PosterStudioAiPage />} />
-          <Route path="/connections" element={<ConnectionsPage />} />
-          <Route path="/social" element={<SocialHubPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
-          <Route path="/tasks" element={<TasksPage />} />
+          <Route path="/campaigns/content" element={<ContentCreatorPage />} />
+          <Route path="/campaigns/posters" element={<PosterStudioAiPage />} />
+          <Route path="/campaigns/social" element={<SocialHubPage />} />
+          <Route path="/campaigns/tasks" element={<TasksPage />} />
+          <Route path="/content" element={<Navigate to="/campaigns/content" replace />} />
+          <Route path="/poster" element={<Navigate to="/campaigns/posters" replace />} />
+          <Route path="/poster-ai" element={<Navigate to="/campaigns/posters" replace />} />
+          <Route path="/social" element={<Navigate to="/campaigns/social" replace />} />
+          <Route path="/tasks" element={<Navigate to="/campaigns/tasks" replace />} />
+          <Route path="/connections" element={<Navigate to="/settings/connections" replace />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
           <Route path="/settings" element={<ModulePlaceholder title="Settings" icon={Settings} />} />
+          <Route path="/settings/connections" element={<ConnectionsPage />} />
             <Route path="*" element={<NavigateHome />} />
           </Routes>
         </Suspense>
@@ -238,7 +283,7 @@ export function AppShell() {
 
       <nav className="bottom-nav" aria-label="Mobile navigation">
         {mobilePrimaryNav.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.to === '/'} className="bottom-nav__item" onClick={() => setMobileMenuOpen(false)}>
+          <NavLink key={item.to} to={item.to} end={item.end} className="bottom-nav__item" onClick={() => setMobileMenuOpen(false)}>
             <item.icon size={21} />
             <span>{item.label}</span>
           </NavLink>

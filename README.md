@@ -38,11 +38,12 @@ Still needed before full public launch:
 ## Main Modules
 
 - Business DNA: captures brand positioning, audience, website intelligence, colors, and logo.
-- Content Studio: creates platform-ready posts and video/ad scripts using saved Business DNA.
-- Poster Studio: editable poster canvas with logo, text, RGB palette, background controls, download, save, and Social Hub handoff.
+- Campaigns: main operating tree for campaign objectives, content, posters, tasks, and publishing work.
+- Content Studio: Campaigns subsection for platform-ready posts and video/ad scripts using saved Business DNA.
+- Poster Studio: Campaigns subsection for editable posters with logo, text, RGB palette, background controls, download, save, and Social Hub handoff.
 - Poster AI Studio: uses Supabase Edge Functions in hosted deployments, with optional n8n workflows for local or advanced automation.
-- Social Hub: connects handles and queues/publishes content to selected social, ads, and messaging channels.
-- Campaigns: plan campaign objectives, status, and linked content/tasks/social work.
+- Social Hub: Campaigns subsection for queueing/publishing content to selected social, ads, and messaging channels.
+- Settings / Connections: workspace configuration for connected social and messaging handles.
 - Supabase backend: auth, storage, Edge Functions, database tables, RLS, and organization-scoped SaaS data.
 
 The product objective is expanding from generating marketing assets to running marketing work end to

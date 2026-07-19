@@ -292,6 +292,11 @@ a {
   gap: 6px;
 }
 
+.nav-section {
+  display: grid;
+  gap: 4px;
+}
+
 .nav-item {
   min-height: 44px;
   display: flex;
@@ -306,6 +311,24 @@ a {
 .nav-item.active {
   color: var(--primary);
   background: #fdf2f8;
+}
+
+.nav-item--parent {
+  font-weight: 900;
+}
+
+.nav-children {
+  display: grid;
+  gap: 3px;
+  margin-left: 14px;
+  padding-left: 10px;
+  border-left: 1px solid #e8eaf0;
+}
+
+.nav-item--child {
+  min-height: 36px;
+  padding: 0 10px;
+  font-size: 13px;
 }
 
 .sidebar-footer {
