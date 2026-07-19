@@ -23,7 +23,14 @@ OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstr
 TEXT_MODEL = os.getenv("POSTER_TEXT_MODEL", "gpt-4o-mini")
 IMAGE_MODEL = os.getenv("POSTER_IMAGE_MODEL", "gpt-image-2")
 IMAGE_QUALITY = os.getenv("POSTER_IMAGE_QUALITY", "high")
-REQUIRE_AUTH = os.getenv("POSTER_REQUIRE_AUTH", "true").lower() not in {"0", "false", "no"}
+ALLOW_INSECURE_LOCAL = (
+    os.getenv("POSTER_ALLOW_INSECURE_LOCAL", "false").lower() in {"1", "true", "yes"}
+    and not os.getenv("VERCEL")
+)
+REQUIRE_AUTH = (
+    os.getenv("POSTER_REQUIRE_AUTH", "true").lower() not in {"0", "false", "no"}
+    or not ALLOW_INSECURE_LOCAL
+)
 MAX_CONCEPTS = max(1, min(int(os.getenv("POSTER_MAX_CONCEPTS", "4")), 6))
 
 EXPORT_SIZES: dict[str, tuple[int, int]] = {
@@ -150,7 +157,7 @@ def _supabase_config() -> tuple[str, str]:
     return url, anon
 
 
-async def _authenticate(authorization: str | None, org_id: str) -> UserContext:
+async def _authenticate(authorization: str | None) -> UserContext:
     if not REQUIRE_AUTH:
         return UserContext(user_id="local-development", access_token="")
     if not authorization or not authorization.lower().startswith("bearer "):
@@ -168,15 +175,44 @@ async def _authenticate(authorization: str | None, org_id: str) -> UserContext:
         user_id = str(user_response.json().get("id") or "")
         if not user_id:
             raise HTTPException(status_code=401, detail="Could not verify your user account.")
-        if org_id:
-            membership = await client.get(
-                f"{supabase_url}/rest/v1/organization_memberships",
-                headers={**headers, "Accept": "application/json"},
-                params={"select": "id", "org_id": f"eq.{org_id}", "user_id": f"eq.{user_id}", "limit": "1"},
-            )
-            if membership.status_code != 200 or not membership.json():
-                raise HTTPException(status_code=403, detail="You do not have access to this workspace.")
     return UserContext(user_id=user_id, access_token=token)
+
+
+async def _reserve_poster_usage(access_token: str, org_id: str, units: int) -> None:
+    supabase_url, anon_key = _supabase_config()
+    headers = {
+        "apikey": anon_key,
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(
+            f"{supabase_url}/rest/v1/rpc/reserve_poster_generation",
+            headers=headers,
+            json={"target_org_id": org_id, "requested_units": units},
+        )
+
+    if response.status_code == 200:
+        return
+
+    try:
+        payload = response.json()
+        message = str(payload.get("message") or payload.get("hint") or "")
+    except (ValueError, AttributeError):
+        message = ""
+
+    normalized = message.lower()
+    if response.status_code in {401, 403} or "active owner, admin, or editor" in normalized:
+        raise HTTPException(status_code=403, detail="You do not have permission to generate posters for this workspace.")
+    if "generation limit" in normalized or "too many poster generation" in normalized:
+        raise HTTPException(status_code=429, detail=message or "Poster generation limit reached. Try again later.")
+    if "reserve_poster_generation" in normalized or response.status_code == 404:
+        raise HTTPException(status_code=503, detail="Poster usage controls are not installed. Apply the latest Supabase migration.")
+    raise HTTPException(status_code=503, detail="Could not verify poster usage limits. Try again shortly.")
+
+
+def _poster_usage_units(mode: str, count: int) -> int:
+    return 1 if mode == "concepts" else count + 1
 
 
 def _brand_name(request: PosterRequest) -> str:
@@ -537,11 +573,11 @@ async def create_poster(
         raise HTTPException(status_code=422, detail="Enter a poster brief first.")
     if not payload.orgId and REQUIRE_AUTH:
         raise HTTPException(status_code=422, detail="Choose a workspace before generating a poster.")
-    user = await _authenticate(authorization, payload.orgId)
-    if payload.userId and payload.userId != user.user_id and REQUIRE_AUTH:
-        raise HTTPException(status_code=403, detail="The request user does not match the signed-in account.")
+    user = await _authenticate(authorization)
 
     count = 1 if payload.mode == "poster" else max(1, min(payload.count or payload.conceptCount or 1, MAX_CONCEPTS))
+    if REQUIRE_AUTH:
+        await _reserve_poster_usage(user.access_token, payload.orgId, _poster_usage_units(payload.mode, count))
     palette = _palette(payload)
     plans = await _plan_concepts(payload, count, palette)
     if payload.mode == "concepts":
