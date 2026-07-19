@@ -1,15 +1,18 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarDays, CheckCircle2, Loader2, Pencil, RotateCcw, Save, Target, X } from 'lucide-react';
+import { Archive, CalendarDays, CheckCircle2, Loader2, Pencil, RefreshCw, RotateCcw, Save, Target, Upload, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import type { Database } from '../../types/database';
+import type { Database, Json } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
 import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
+import { reportingSourceName, sourceStatusLabel } from '../analytics/reportingSources';
+import { parseLeadFile, parseSourceLeads, type ParsedLead } from './leadImport';
 
 type LeadRow = Database['public']['Tables']['leads']['Row'];
 type LeadStatus = LeadRow['status'];
 type LeadSource = LeadRow['source'];
 type LeadFilter = 'all' | LeadStatus | 'follow_up';
 type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
+type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
 
 type LeadForm = {
   fullName: string;
@@ -87,11 +90,21 @@ export function LeadsPage() {
   const { organization, user, membership } = useAuth();
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [analyticsSources, setAnalyticsSources] = useState<AnalyticsSourceRow[]>([]);
   const [form, setForm] = useState<LeadForm>(emptyForm);
+  const [importBrandSelectionId, setImportBrandSelectionId] = useState(SELF_BRAND_ID);
+  const [importCampaignId, setImportCampaignId] = useState('');
+  const [importSource, setImportSource] = useState<LeadSource>('ads');
+  const [importPreview, setImportPreview] = useState<ParsedLead[]>([]);
+  const [importFileName, setImportFileName] = useState('');
+  const [importSkipped, setImportSkipped] = useState(0);
+  const [selectedSourceId, setSelectedSourceId] = useState('');
   const [editingId, setEditingId] = useState('');
   const [filter, setFilter] = useState<LeadFilter>('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [updatingId, setUpdatingId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -116,7 +129,11 @@ export function LeadsPage() {
         return;
       }
 
-      const [{ data: leadData, error: leadError }, { data: campaignData, error: campaignError }] = await Promise.all([
+      const [
+        { data: leadData, error: leadError },
+        { data: campaignData, error: campaignError },
+        { data: sourceData, error: sourceError },
+      ] = await Promise.all([
         supabase
           .from('leads')
           .select('*')
@@ -131,13 +148,20 @@ export function LeadsPage() {
           .neq('status', 'archived')
           .order('updated_at', { ascending: false })
           .limit(100),
+        supabase
+          .from('analytics_sources')
+          .select('*')
+          .eq('org_id', organization.id)
+          .order('updated_at', { ascending: false }),
       ]);
 
       if (!active) return;
       if (leadError) setError(errorMessage(leadError, 'Could not load leads.'));
       if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
+      if (sourceError) setError(errorMessage(sourceError, 'Could not load connected marketing sources.'));
       setLeads(leadData ?? []);
       setCampaigns(campaignData ?? []);
+      setAnalyticsSources(sourceData ?? []);
       setLoading(false);
     }
 
@@ -151,12 +175,26 @@ export function LeadsPage() {
     () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, form.brandSelectionId)),
     [campaigns, form.brandSelectionId, isAgency],
   );
+  const importCampaignOptions = useMemo(
+    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, importBrandSelectionId)),
+    [campaigns, importBrandSelectionId, isAgency],
+  );
+  const connectedLeadSources = useMemo(
+    () => analyticsSources.filter((source) => ['connected', 'syncing'].includes(source.status)),
+    [analyticsSources],
+  );
 
   useEffect(() => {
     if (form.campaignId && !campaignOptions.some((campaign) => campaign.id === form.campaignId)) {
       updateForm('campaignId', '');
     }
   }, [campaignOptions, form.campaignId]);
+
+  useEffect(() => {
+    if (importCampaignId && !importCampaignOptions.some((campaign) => campaign.id === importCampaignId)) {
+      setImportCampaignId('');
+    }
+  }, [importCampaignId, importCampaignOptions]);
 
   const counts = useMemo(() => {
     const next = new Map<LeadFilter, number>([['all', leads.length]]);
@@ -300,6 +338,121 @@ export function LeadsPage() {
     }
   }
 
+  async function handleImportFile(file: File | null) {
+    setMessage('');
+    setError('');
+    setImportPreview([]);
+    setImportFileName('');
+    setImportSkipped(0);
+
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const parsed = await parseLeadFile(file, importSource);
+      setImportPreview(parsed.rows);
+      setImportFileName(file.name);
+      setImportSkipped(parsed.skipped);
+      setMessage(`${parsed.rows.length} lead${parsed.rows.length === 1 ? '' : 's'} ready to import from ${file.name}.`);
+    } catch (parseError) {
+      setError(errorMessage(parseError, 'Could not read this lead sheet. Use .xlsx, .csv, or .tsv.'));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function saveImportPreview() {
+    if (!importFileName || importPreview.length === 0) {
+      setError('Upload a lead sheet before importing.');
+      return;
+    }
+    await saveParsedLeads(importPreview, {
+      externalSourceKey: `file:${importFileName}`,
+      successMessage: `${importPreview.length} lead${importPreview.length === 1 ? '' : 's'} imported from sheet.`,
+      metadata: { importFile: importFileName, importMode: 'file' },
+    });
+    setImportPreview([]);
+    setImportFileName('');
+    setImportSkipped(0);
+  }
+
+  async function syncConnectedSource() {
+    setMessage('');
+    setError('');
+
+    const source = analyticsSources.find((item) => item.id === selectedSourceId);
+    if (!source) {
+      setError('Choose a connected marketing source first.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const parsed = parseSourceLeads(source.metadata, sourceKeyToLeadSource(source.source_key), source.source_key);
+      if (parsed.rows.length === 0) {
+        setError(`${source.display_name} is connected in Settings / Connections, but it has no lead-form rows available yet. Import the platform export sheet here until that provider starts sending lead payloads into this source.`);
+        return;
+      }
+
+      await saveParsedLeads(parsed.rows, {
+        externalSourceKey: source.source_key,
+        successMessage: `${parsed.rows.length} lead${parsed.rows.length === 1 ? '' : 's'} synced from ${source.display_name}.`,
+        metadata: { importMode: 'source_sync', analyticsSourceId: source.id, sourceKey: source.source_key },
+      });
+    } catch (syncError) {
+      setError(errorMessage(syncError, 'Could not sync leads from this source.'));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  async function saveParsedLeads(rows: ParsedLead[], options: { externalSourceKey: string; successMessage: string; metadata: Record<string, Json> }) {
+    if (!supabase || !organization?.id || !user?.id) return;
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to import leads.');
+      return;
+    }
+
+    setImporting(true);
+    setMessage('');
+    setError('');
+
+    const payload = rows.map((row) => ({
+      org_id: organization.id,
+      client_business_dna_id: isAgency && importBrandSelectionId !== SELF_BRAND_ID ? importBrandSelectionId : null,
+      campaign_id: importCampaignId || campaignIdFromName(row.campaignName, importCampaignOptions) || null,
+      full_name: row.fullName,
+      company: row.company || null,
+      email: row.email || null,
+      phone: row.phone || null,
+      source: row.source,
+      status: row.status,
+      lead_score: row.leadScore,
+      estimated_value: row.estimatedValue,
+      next_follow_up_at: row.nextFollowUpAt,
+      notes: row.notes || null,
+      external_source_key: options.externalSourceKey,
+      external_lead_id: row.externalLeadId,
+      metadata: { ...options.metadata, parsed: row.metadata } satisfies Json,
+      created_by: user.id,
+    }));
+
+    try {
+      const { data, error: upsertError } = await supabase
+        .from('leads')
+        .upsert(payload, { onConflict: 'org_id,external_source_key,external_lead_id' })
+        .select('*');
+      if (upsertError) throw upsertError;
+      const nextRows = data ?? [];
+      setLeads((current) => mergeLeads(current, nextRows));
+      setMessage(options.successMessage);
+    } catch (saveError) {
+      setError(errorMessage(saveError, 'Could not save imported leads.'));
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="page-stack leads-page">
       <header className="page-header">
@@ -424,6 +577,94 @@ export function LeadsPage() {
             {error ? <p className="form-message error">{error}</p> : null}
           </section>
 
+          <section className="draft-panel creator-panel lead-import-panel" aria-label="Import leads">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Import</p>
+                <h3>Sheets and sources</h3>
+              </div>
+              <Upload size={21} />
+            </div>
+
+            {isAgency ? (
+              <BrandDnaSelect
+                label="Import for"
+                selfLabel={organization?.name ?? 'Agency brand'}
+                clients={clients}
+                value={importBrandSelectionId}
+                onChange={setImportBrandSelectionId}
+              />
+            ) : null}
+
+            <div className="lead-import-grid">
+              <label>
+                <span>Campaign</span>
+                <select value={importCampaignId} onChange={(event) => setImportCampaignId(event.target.value)}>
+                  <option value="">Match from sheet or leave blank</option>
+                  {importCampaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Default source</span>
+                <select value={importSource} onChange={(event) => setImportSource(event.target.value as LeadSource)}>
+                  {sourceOptions.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <label className="lead-file-drop">
+              <Upload size={18} />
+              <span>{importFileName || 'Upload .xlsx, .csv, or .tsv lead sheet'}</span>
+              <input type="file" accept=".xlsx,.csv,.tsv,text/csv,text/tab-separated-values" onChange={(event) => handleImportFile(event.target.files?.[0] ?? null)} disabled={!canWrite || importing} />
+            </label>
+
+            {importPreview.length > 0 ? (
+              <div className="lead-import-preview">
+                <div>
+                  <strong>{importPreview.length} ready</strong>
+                  <small>{importSkipped > 0 ? `${importSkipped} skipped` : 'No skipped rows'}</small>
+                </div>
+                <ul>
+                  {importPreview.slice(0, 4).map((lead, index) => (
+                    <li key={`${lead.fullName}-${index}`}>
+                      <span>{lead.fullName}</span>
+                      <small>{[lead.email, lead.phone, sourceLabel(lead.source)].filter(Boolean).join(' - ')}</small>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" className="primary-action" onClick={saveImportPreview} disabled={!canWrite || importing}>
+                  {importing ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
+                  <span>{importing ? 'Importing' : 'Import leads'}</span>
+                </button>
+              </div>
+            ) : null}
+
+            <div className="lead-source-sync">
+              <div>
+                <p className="eyebrow">From Connections</p>
+                <h4>Sync connected marketing source</h4>
+              </div>
+              <div className="lead-import-grid">
+                <label>
+                  <span>Marketing source</span>
+                  <select value={selectedSourceId} onChange={(event) => setSelectedSourceId(event.target.value)}>
+                    <option value="">Choose source</option>
+                    {analyticsSources.map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.display_name || reportingSourceName(source.source_key)} - {sourceStatusLabel(source.status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" className="icon-text-button lead-sync-button" onClick={syncConnectedSource} disabled={!canWrite || syncing || connectedLeadSources.length === 0}>
+                  {syncing ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
+                  <span>{syncing ? 'Syncing' : 'Sync leads'}</span>
+                </button>
+              </div>
+              {connectedLeadSources.length === 0 ? <p className="form-message warning">Connect marketing data sources in Settings / Connections first.</p> : null}
+            </div>
+          </section>
+
           <section className="draft-panel saved-content-panel" aria-label="Lead list">
             <div className="section-heading content-library-heading">
               <div>
@@ -522,10 +763,29 @@ function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow
   );
 }
 
+function campaignIdFromName(name: string, campaigns: CampaignRow[]) {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return '';
+  return campaigns.find((campaign) => campaign.name.trim().toLowerCase() === normalized)?.id ?? '';
+}
+
 function campaignMatchesBrand(campaign: CampaignRow, isAgency: boolean, brandSelectionId: string) {
   if (!isAgency) return true;
   if (brandSelectionId === SELF_BRAND_ID) return !campaign.client_business_dna_id;
   return campaign.client_business_dna_id === brandSelectionId;
+}
+
+function mergeLeads(current: LeadRow[], nextRows: LeadRow[]) {
+  const map = new Map(current.map((lead) => [lead.id, lead]));
+  for (const lead of nextRows) map.set(lead.id, lead);
+  return Array.from(map.values()).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+}
+
+function sourceKeyToLeadSource(sourceKey: string): LeadSource {
+  if (sourceKey.includes('meta') || sourceKey.includes('google') || sourceKey.includes('tiktok') || sourceKey.includes('linkedin')) return 'ads';
+  if (sourceKey.includes('shopify')) return 'website';
+  if (sourceKey.includes('youtube')) return 'social';
+  return 'other';
 }
 
 function isFollowUpDue(lead: LeadRow) {

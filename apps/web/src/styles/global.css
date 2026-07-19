@@ -1990,6 +1990,120 @@ a {
   padding-left: 10px;
 }
 
+.lead-import-panel {
+  align-content: start;
+}
+
+.lead-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.lead-import-grid label,
+.lead-source-sync,
+.lead-import-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.lead-import-grid label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.lead-import-grid select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 12px;
+  font-weight: 800;
+  outline: none;
+}
+
+.lead-file-drop {
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  padding: 14px;
+  text-align: center;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lead-file-drop input {
+  display: none;
+}
+
+.lead-import-preview {
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.lead-import-preview div,
+.lead-import-preview li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lead-import-preview ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lead-import-preview li {
+  min-width: 0;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 8px 10px;
+}
+
+.lead-import-preview span,
+.lead-import-preview small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lead-import-preview small,
+.lead-source-sync small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.lead-source-sync {
+  border-top: 1px solid #e8eaf0;
+  padding-top: 12px;
+}
+
+.lead-source-sync h4 {
+  margin: 0;
+}
+
+.lead-sync-button {
+  min-height: 44px;
+}
+
 .saved-content-panel {
   grid-column: 1 / -1;
 }

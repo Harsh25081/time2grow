@@ -521,6 +521,9 @@ export type Database = {
           estimated_value: number | null;
           next_follow_up_at: string | null;
           notes: string | null;
+          external_source_key: string | null;
+          external_lead_id: string | null;
+          metadata: Json;
           created_by: string;
           created_at: string;
           updated_at: string;
@@ -540,6 +543,9 @@ export type Database = {
           estimated_value?: number | null;
           next_follow_up_at?: string | null;
           notes?: string | null;
+          external_source_key?: string | null;
+          external_lead_id?: string | null;
+          metadata?: Json;
           created_by: string;
           created_at?: string;
           updated_at?: string;
@@ -557,6 +563,9 @@ export type Database = {
           estimated_value?: number | null;
           next_follow_up_at?: string | null;
           notes?: string | null;
+          external_source_key?: string | null;
+          external_lead_id?: string | null;
+          metadata?: Json;
           updated_at?: string;
         };
         Relationships: [];
