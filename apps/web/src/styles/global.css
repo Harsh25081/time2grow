@@ -3950,15 +3950,6 @@ a {
   background: var(--primary);
 }
 
-.connection-status.connected {
-  background: var(--green-soft);
-  color: var(--green);
-}
-
-.registry-card {
-  border-style: dashed;
-}
-
 /* Ask-your-data panel */
 
 .eyebrow.ai {

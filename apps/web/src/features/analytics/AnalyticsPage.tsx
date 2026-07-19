@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart3,
   Database,
-  Link2,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -16,7 +16,6 @@ import { useAuth } from '../auth/AuthProvider';
 import type { Json } from '../../types/database';
 import {
   buildSampleMetrics,
-  categoryLabels,
   cpc,
   ctr,
   emptyTotals,
@@ -28,7 +27,6 @@ import {
   roas,
   sourceCatalog,
   sourceName,
-  statusLabels,
   sumMetrics,
   type AnalyticsMetricRow,
   type AnalyticsSourceRow,
@@ -228,14 +226,6 @@ export function AnalyticsPage() {
     });
   }
 
-  function connectSource(key: string) {
-    return withBusy(`connect-${key}`, async () => {
-      await seedSources([key]);
-      setMessage(`${sourceName(key)} connected. Its reporting data is now in your unified store.`);
-      await load();
-    });
-  }
-
   function resetData() {
     if (!window.confirm('Remove all analytics sources and their reporting data for this workspace? This cannot be undone.')) return;
     return withBusy('reset', async () => {
@@ -311,8 +301,8 @@ export function AnalyticsPage() {
       <p className="analytics-intro">
         One place for reporting data from every ad platform and marketing source — Meta Ads, Google Ads,
         TikTok Ads, LinkedIn Ads, YouTube, Shopify, and {REGISTRY_SOURCE_COUNT - sourceCatalog.length}+ more
-        in the registry. Connect a source to pull its spend, reach, and revenue into a unified store you can
-        query directly.
+        in the registry. Connect sources on the <Link to="/connections">Connections page</Link>; their spend,
+        reach, and revenue flow into this unified store you can query directly.
       </p>
 
       {loading ? (
@@ -378,8 +368,8 @@ export function AnalyticsPage() {
               <BarChart3 size={34} />
               <h3>No reporting data yet</h3>
               <p>
-                Connect a source below to pull its reporting data in.
-                {canWrite ? ' Or load sample data to see the unified view populated.' : ' Ask an editor to connect a source.'}
+                Connect your ad platforms and marketing sources on the <Link to="/connections">Connections page</Link> and their reporting data shows up here.
+                {canWrite ? ' Or load sample data to preview the unified view.' : ' Ask an editor to connect a source.'}
               </p>
             </section>
           ) : (
@@ -496,59 +486,6 @@ export function AnalyticsPage() {
               </section>
             </>
           )}
-
-          <section className="analytics-panel" aria-label="Sources">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Registry</p>
-                <h3>Sources</h3>
-              </div>
-              <span>{connectedKeys.size}/{sourceCatalog.length} connected</span>
-            </div>
-            <div className="connections-grid">
-              {sourceCatalog.map((source) => {
-                const connected = connectedKeys.has(source.key);
-                const row = sources.find((item) => item.source_key === source.key);
-                const connecting = busy === `connect-${source.key}`;
-                return (
-                  <article className={`connection-card ${connected ? 'is-connected' : ''}`} key={source.key}>
-                    <div className="connection-card__top">
-                      <span className="channel-icon"><BarChart3 size={18} /></span>
-                      <span className={`connection-status ${connected ? 'connected' : ''}`}>
-                        {statusLabels[row?.status ?? 'disconnected']}
-                      </span>
-                    </div>
-                    <div>
-                      <h4>{source.name}</h4>
-                      <p>{categoryLabels[source.category]}{row?.last_synced_at ? ` · synced ${formatWhen(row.last_synced_at)}` : ''}</p>
-                    </div>
-                    <div className="connection-card__bottom">
-                      <span>{connected ? 'In your store' : 'Not connected'}</span>
-                      {canWrite ? (
-                        <button type="button" onClick={() => connectSource(source.key)} disabled={Boolean(busy)}>
-                          {connecting ? 'Connecting' : connected ? 'Re-sync' : 'Connect'}
-                        </button>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-
-              <article className="connection-card registry-card">
-                <div className="connection-card__top">
-                  <span className="channel-icon"><Link2 size={18} /></span>
-                  <span className="connection-status">Registry</span>
-                </div>
-                <div>
-                  <h4>{REGISTRY_SOURCE_COUNT - sourceCatalog.length}+ more sources</h4>
-                  <p>GA4, Klaviyo, HubSpot, Amazon Ads, Pinterest, and hundreds more in the connector registry.</p>
-                </div>
-                <div className="connection-card__bottom">
-                  <span>Live sync rolling out</span>
-                </div>
-              </article>
-            </div>
-          </section>
         </>
       )}
     </div>
@@ -584,10 +521,6 @@ function addTo(base: MetricTotals | undefined, row: AnalyticsMetricRow): MetricT
 function pctDelta(current: number, previous: number): number | null {
   if (!previous) return null;
   return (current - previous) / previous;
-}
-
-function formatWhen(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(value));
 }
 
 function errorMessage(error: unknown, fallback: string) {
