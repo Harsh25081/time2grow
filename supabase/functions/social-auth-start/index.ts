@@ -6,6 +6,7 @@ import {
   HttpError,
   jsonResponse,
   requiredEnv,
+  safeAppReturnPath,
   serviceClient,
   youtubeScopes,
 } from '../_shared/youtube.ts';
@@ -26,7 +27,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const provider = typeof body.provider === 'string' && providers.includes(body.provider) ? body.provider as Provider : null;
     const orgId = typeof body.orgId === 'string' ? body.orgId : '';
-    const returnTo = typeof body.returnTo === 'string' ? body.returnTo : null;
+    const returnTo = safeAppReturnPath(body.returnTo, '/connections');
 
     if (!provider) return jsonResponse({ error: 'Unsupported provider.' }, 400);
     if (!orgId) return jsonResponse({ error: 'Missing orgId.' }, 400);

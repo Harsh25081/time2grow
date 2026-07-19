@@ -34,7 +34,8 @@ type AddHandleForm = {
 };
 
 export function ConnectionsPage() {
-  const { organization, user } = useAuth();
+  const { organization, user, membership } = useAuth();
+  const canManageConnections = membership?.role === 'owner' || membership?.role === 'admin';
   const [accountHandles, setAccountHandles] = useState<Handle[]>([]);
   const [form, setForm] = useState<AddHandleForm>({ provider: 'facebook', label: '', externalId: '', status: 'ready' });
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
@@ -119,6 +120,10 @@ export function ConnectionsPage() {
 
   async function handleConnectProvider(provider: Provider) {
     setConnectionMessage('');
+    if (!canManageConnections) {
+      setConnectionError('Ask a workspace owner or admin to manage connections.');
+      return;
+    }
     setConnectionError('');
 
     const status = connectionByProvider.get(provider);
@@ -145,7 +150,7 @@ export function ConnectionsPage() {
         body: {
           provider,
           orgId: organization.id,
-          returnTo: `${window.location.origin}/connections`,
+          returnTo: '/connections',
         },
       });
 
@@ -162,6 +167,10 @@ export function ConnectionsPage() {
   async function handleAddHandle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormMessage('');
+    if (!canManageConnections) {
+      setFormError('Ask a workspace owner or admin to add handles.');
+      return;
+    }
     setFormError('');
 
     const label = form.label.trim();
@@ -212,6 +221,10 @@ export function ConnectionsPage() {
   }
 
   async function handleDeleteHandle(handle: Handle) {
+    if (!canManageConnections) {
+      setFormError('Ask a workspace owner or admin to remove handles.');
+      return;
+    }
     if (!window.confirm(`Remove "${handle.label}"? This can't be undone.`)) return;
 
     setFormMessage('');
@@ -270,7 +283,7 @@ export function ConnectionsPage() {
                 </div>
                 <div className="connection-card__bottom">
                   <span>{connection?.handleCount ?? accountHandles.filter((handle) => handle.provider === channel.provider && handle.persisted).length} handles</span>
-                  <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={connecting || connectionsLoading}>
+                  <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={!canManageConnections || connecting || connectionsLoading} title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : undefined}>
                     {connecting ? 'Connecting' : connectionActionText(connection)}
                   </button>
                 </div>
@@ -288,30 +301,31 @@ export function ConnectionsPage() {
           <p className="eyebrow">Account handles</p>
           <h3>Add manual handle</h3>
         </div>
+        {!canManageConnections ? <p className="form-message warning">You can view saved handles. Ask a workspace owner or admin to make connection changes.</p> : null}
         <form className="add-handle-form" onSubmit={handleAddHandle}>
           <label>
             <span>Platform</span>
-            <select value={form.provider} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as Provider }))}>
+            <select value={form.provider} disabled={!canManageConnections} onChange={(event) => setForm((current) => ({ ...current, provider: event.target.value as Provider }))}>
               {channels.map((channel) => <option key={channel.provider} value={channel.provider}>{channel.name}</option>)}
             </select>
           </label>
           <label>
             <span>Handle name</span>
-            <input value={form.label} onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))} placeholder="Example: Brand Main Page" />
+            <input value={form.label} disabled={!canManageConnections} onChange={(event) => setForm((current) => ({ ...current, label: event.target.value }))} placeholder="Example: Brand Main Page" />
           </label>
           <label>
             <span>{providerMeta[form.provider].externalLabel}</span>
-            <input value={form.externalId} onChange={(event) => setForm((current) => ({ ...current, externalId: event.target.value }))} placeholder={providerHandlePlaceholder(form.provider)} />
+            <input value={form.externalId} disabled={!canManageConnections} onChange={(event) => setForm((current) => ({ ...current, externalId: event.target.value }))} placeholder={providerHandlePlaceholder(form.provider)} />
           </label>
           <label>
             <span>Status</span>
-            <select value={form.status} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as HandleStatus }))}>
+            <select value={form.status} disabled={!canManageConnections} onChange={(event) => setForm((current) => ({ ...current, status: event.target.value as HandleStatus }))}>
               <option value="ready">Ready</option>
               <option value="review">Review</option>
               <option value="needs_setup">Needs setup</option>
             </select>
           </label>
-          <button className="primary-action add-handle-submit" type="submit" disabled={saving}>
+          <button className="primary-action add-handle-submit" type="submit" disabled={!canManageConnections || saving}>
             <Plus size={18} />
             <span>{saving ? 'Adding' : 'Add handle'}</span>
           </button>
@@ -352,9 +366,11 @@ export function ConnectionsPage() {
                         </div>
                         <span className={`handle-status ${unlinked ? 'needs_setup' : handle.status}`}>{unlinked ? 'Connect first' : statusLabel(handle.status)}</span>
                       </div>
-                      <button type="button" className="icon-button" aria-label={`Remove ${handle.label}`} onClick={() => handleDeleteHandle(handle)}>
-                        <Trash2 size={16} />
-                      </button>
+                      {canManageConnections ? (
+                        <button type="button" className="icon-button" aria-label={'Remove ' + handle.label} onClick={() => handleDeleteHandle(handle)}>
+                          <Trash2 size={16} />
+                        </button>
+                      ) : null}
                     </div>
                   );
                 })}

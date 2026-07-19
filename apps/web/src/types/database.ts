@@ -582,7 +582,21 @@ export type Database = {
         Relationships: [];
       };    };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      reserve_ai_usage: {
+        Args: {
+          p_org_id: string;
+          p_user_id: string;
+          p_action: string;
+          p_daily_limit?: number;
+        };
+        Returns: Json;
+      };
+      workspace_dashboard_stats: {
+        Args: { target_org_id: string };
+        Returns: Json;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

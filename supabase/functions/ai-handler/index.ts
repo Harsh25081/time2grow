@@ -143,8 +143,7 @@ Deno.serve(async (req) => {
     if (!handler) return jsonResponse({ error: `Unknown ai-handler action: ${action}.` }, 400);
 
     await assertOrgRole(supabase, orgId, user.id, ['owner', 'admin', 'editor']);
-    await enforceDailyCap(supabase, orgId);
-    await logAiUsage(supabase, orgId, user.id, action);
+    await reserveAiUsage(supabase, orgId, user.id, action);
 
     const result = await handler({ supabase, orgId, userId: user.id, payload: body });
 
@@ -160,24 +159,27 @@ Deno.serve(async (req) => {
   }
 });
 
-async function enforceDailyCap(supabase: ServiceClient, orgId: string) {
-  const since = new Date();
-  since.setUTCHours(0, 0, 0, 0);
+async function reserveAiUsage(supabase: ServiceClient, orgId: string, userId: string, action: string) {
+  const { error } = await supabase.rpc('reserve_ai_usage', {
+    p_org_id: orgId,
+    p_user_id: userId,
+    p_action: action,
+    p_daily_limit: dailyOrgCallCap(),
+  });
 
-  const { count, error } = await supabase
-    .from('ai_usage_log')
-    .select('id', { count: 'exact', head: true })
-    .eq('org_id', orgId)
-    .gte('created_at', since.toISOString());
+  if (!error) return;
 
-  if (error) throw error;
-  if ((count ?? 0) >= dailyOrgCallCap()) {
+  const message = error.message.toLowerCase();
+  if (message.includes('daily ai limit')) {
     throw new HttpError(429, 'This workspace has reached its daily AI limit. Try again tomorrow.');
   }
-}
-
-async function logAiUsage(supabase: ServiceClient, orgId: string, userId: string, action: string) {
-  await supabase.from('ai_usage_log').insert({ org_id: orgId, user_id: userId, action });
+  if (message.includes('write-capable membership')) {
+    throw new HttpError(403, 'You do not have permission to use AI for this workspace.');
+  }
+  if (message.includes('reserve_ai_usage') || error.code === 'PGRST202') {
+    throw new HttpError(503, 'AI usage controls are not installed. Apply the latest Supabase migration.');
+  }
+  throw new HttpError(503, 'Could not reserve AI usage. Try again shortly.');
 }
 
 async function extractDna({ supabase, orgId, userId, payload }: ActionContext) {

@@ -590,7 +590,8 @@ a {
   box-shadow: 0 18px 36px rgba(155, 81, 224, 0.28);
 }
 
-.bottom-nav {
+.bottom-nav,
+.mobile-more-menu {
   display: none;
 }
 
@@ -637,6 +638,8 @@ a {
 
   .bottom-nav__item {
     min-width: 0;
+    border: 0;
+    background: transparent;
     display: grid;
     place-items: center;
     align-content: center;
@@ -647,6 +650,51 @@ a {
   }
 
   .bottom-nav__item.active {
+    color: var(--primary);
+  }
+
+  .mobile-more-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 86px;
+    z-index: 31;
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: #ffffff;
+    padding: 14px;
+    box-shadow: 0 18px 48px rgba(17, 24, 39, 0.18);
+  }
+
+  .mobile-more-menu__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .mobile-more-menu__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-more-menu__item {
+    min-height: 46px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    border-radius: 8px;
+    background: #f8fafc;
+    padding: 0 12px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .mobile-more-menu__item.active {
+    background: #fdf2f8;
     color: var(--primary);
   }
 
@@ -1190,6 +1238,17 @@ a {
   gap: 10px;
 }
 
+.role-gated-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 10px;
+}
+
 .draft-form label {
   display: grid;
   gap: 7px;
@@ -1271,7 +1330,8 @@ a {
 }
 
 @media (max-width: 960px) {
-  .draft-form {
+  .draft-form,
+  .role-gated-fieldset {
     grid-template-columns: 1fr;
   }
 }
@@ -3810,3 +3870,46 @@ a {
   }
 }
 
+
+.public-info-page {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 24px;
+}
+
+.public-info-page > header {
+  display: grid;
+  gap: 10px;
+}
+
+.public-info-content {
+  display: grid;
+  gap: 20px;
+}
+
+.public-info-content section {
+  display: grid;
+  gap: 6px;
+}
+
+.public-info-content h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.public-info-content p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.public-info-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+}

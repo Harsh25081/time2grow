@@ -71,7 +71,7 @@ const emptyForm: ClientForm = {
 const logoMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 const maxLogoBytes = 2 * 1024 * 1024;
 
-export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: string }) {
+export function ClientBrandManager({ orgId, userId, canWrite }: { orgId: string; userId: string; canWrite: boolean }) {
   const [clients, setClients] = useState<ClientBusinessDnaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null); // null=list, 'new'=add, id=edit
@@ -112,6 +112,7 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
   }
 
   function startAdd() {
+    if (!canWrite) return;
     setForm(emptyForm);
     setEditingId('new');
     setMessage('');
@@ -121,6 +122,7 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
   }
 
   async function startEdit(row: ClientBusinessDnaRow) {
+    if (!canWrite) return;
     setMessage('');
     setError('');
     setExtractMessage('');
@@ -176,6 +178,11 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
   }
 
   async function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!canWrite) {
+      event.target.value = '';
+      setError('Ask an owner, admin, or editor to update client brands.');
+      return;
+    }
     if (!supabase || !orgId) return;
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -218,6 +225,10 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
   }
 
   async function handleFetchFromWebsite() {
+    if (!canWrite) {
+      setExtractError('Ask an owner, admin, or editor to update client brands.');
+      return;
+    }
     const websiteUrl = form.websiteUrl.trim();
     if (!websiteUrl) {
       setExtractError('Enter the client website URL first.');
@@ -267,6 +278,10 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to update client brands.');
+      return;
+    }
     if (!supabase || !orgId || !userId) return;
     if (!form.name.trim()) {
       setError('Enter a client name.');
@@ -323,6 +338,7 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
   }
 
   async function handleDelete(row: ClientBusinessDnaRow) {
+    if (!canWrite) return;
     if (typeof window !== 'undefined' && !window.confirm(`Delete client brand "${row.name}"?`)) return;
     setError('');
     try {
@@ -347,6 +363,8 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
         <Building2 size={21} />
       </div>
 
+      {!canWrite ? <p className="form-message warning">You can view client brands. Ask an owner, admin, or editor to make changes.</p> : null}
+
       {editingId === null ? (
         <>
           {loading ? (
@@ -364,14 +382,14 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
                     <strong>{client.name}</strong>
                     <small>{[client.website_url, client.contact_phone].filter(Boolean).join(' · ') || 'No contact set'}</small>
                   </span>
-                  <button type="button" className="icon-text-button" onClick={() => startEdit(client)}>
+                  {canWrite ? <button type="button" className="icon-text-button" onClick={() => startEdit(client)}>
                     <Pencil size={16} />
                     <span>Edit</span>
-                  </button>
-                  <button type="button" className="icon-text-button" onClick={() => handleDelete(client)}>
+                  </button> : null}
+                  {canWrite ? <button type="button" className="icon-text-button" onClick={() => handleDelete(client)}>
                     <Trash2 size={16} />
                     <span>Delete</span>
-                  </button>
+                  </button> : null}
                 </li>
               ))}
             </ul>
@@ -380,13 +398,14 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
           {message ? <p className="form-message success">{message}</p> : null}
           {error ? <p className="form-message error">{error}</p> : null}
 
-          <button type="button" className="primary-action" onClick={startAdd}>
+          {canWrite ? <button type="button" className="primary-action" onClick={startAdd}>
             <Plus size={18} />
             <span>Add client brand</span>
-          </button>
+          </button> : null}
         </>
       ) : (
         <form className="draft-form" onSubmit={handleSubmit}>
+          <fieldset className="role-gated-fieldset" disabled={!canWrite}>
           <label>
             <span>Client name</span>
             <input value={form.name} onChange={(event) => updateField('name', event.target.value)} placeholder="Example: LG, Sunrise School, Green Foundation" />
@@ -511,6 +530,7 @@ export function ClientBrandManager({ orgId, userId }: { orgId: string; userId: s
               <span>Cancel</span>
             </button>
           </div>
+          </fieldset>
         </form>
       )}
     </section>

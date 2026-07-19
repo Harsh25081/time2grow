@@ -19,6 +19,7 @@ Deploy these Supabase Edge Functions:
 - `social-auth-start`
 - `social-auth-callback`
 - `social-publish`
+- `scheduled-jobs`
 
 The older `youtube-auth-start` and `youtube-auth-callback` functions can remain, but the web app now uses the generic `social-auth-*` functions.
 
@@ -58,7 +59,22 @@ WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_PHONE_NUMBER_ID=
 
 TELEGRAM_BOT_TOKEN=
+SCHEDULED_JOBS_SECRET=
 ```
+
+Use a separate, long random value for `SCHEDULED_JOBS_SECRET`. Never expose it as a `VITE_*` variable.
+
+## Automatic scheduled delivery
+
+After applying `20260719150000_scheduled_social_post_delivery.sql` and deploying both publishing functions, create a Supabase Cron job that runs once per minute:
+
+- Method: `POST`
+- URL: `https://your-project-ref.supabase.co/functions/v1/scheduled-jobs`
+- Headers: `Authorization: Bearer <SUPABASE_ANON_KEY>`; `apikey: <SUPABASE_ANON_KEY>`; and `x-scheduled-jobs-secret: <SCHEDULED_JOBS_SECRET>`
+- Body: `{}`
+- Schedule: `* * * * *`
+
+Store the header values in Supabase Vault when the Cron interface offers Vault-backed secrets. The worker atomically claims up to ten due posts per run. Concurrent runs skip posts already claimed. Abandoned claims become failed after twenty minutes and require review, avoiding an unsafe automatic duplicate publish.
 
 ## OAuth redirect URL
 
@@ -72,13 +88,20 @@ Use the same value for `SOCIAL_OAUTH_REDIRECT_URI`.
 
 ## User flow
 
-1. User opens Social Hub.
-2. User connects accounts from the Connections cards.
-3. Meta connection auto-creates Facebook Page and Instagram Business handles when permissions allow it.
-4. YouTube connection auto-creates the YouTube Channel handle.
-5. Slack/LinkedIn may still require adding the exact channel/page handle after connection.
-6. WhatsApp and Telegram use server tokens, then users add destination handles.
-7. User uploads media, selects saved handles, and clicks `Publish now`.
+Connections and posting are two separate pages: `/connections` (setup) and `/social` (posting). Both read and write the same `distribution_handles` table, so a handle added or removed on one page is immediately visible on the other.
+
+**On `/connections`:**
+1. User connects accounts from the Connections cards.
+2. Meta connection auto-creates Facebook Page and Instagram Business handles when permissions allow it.
+3. YouTube connection auto-creates the YouTube Channel handle.
+4. Slack/LinkedIn may still require adding the exact channel/page handle after connection.
+5. WhatsApp and Telegram use server tokens, then users add destination handles manually.
+6. Handles can be removed from here at any time (deletes the saved handle and any stored per-handle credentials; past publish history keeps its record but loses the handle reference).
+
+**On `/social`:**
+1. User picks a campaign or Content Studio item as the source (optional), or writes a post from scratch.
+2. User uploads media, selects saved handles (handles for OAuth-only providers without a live connection show "Connect first" and can't be selected via "Select ready").
+3. User clicks `Publish now`.
 
 ## Publishing capability matrix
 
@@ -107,5 +130,6 @@ If the browser shows `Failed to send a request to the Edge Function`, the functi
 - `social-auth-start`
 - `social-auth-callback`
 - `social-publish`
+- `scheduled-jobs`
 
 A `404` from `/functions/v1/social-publish` means the function is not deployed in that Supabase project yet. Deploy the functions, set the required secrets, then refresh the app and retry publishing.

@@ -72,7 +72,7 @@ const emptyForm: FormState = {
 };
 
 const logoMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
-const qrMimeTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+const qrMimeTypes = ['image/png', 'image/jpeg', 'image/webp'];
 const maxLogoBytes = 2 * 1024 * 1024;
 
 type ExtractedLogo = {
@@ -98,7 +98,8 @@ type ExtractedDna = {
   logo?: ExtractedLogo;
 };
 export function BusinessDnaPage() {
-  const { organization, user } = useAuth();
+  const { organization, user, membership } = useAuth();
+  const canWrite = membership?.role === 'owner' || membership?.role === 'admin' || membership?.role === 'editor';
   const [form, setForm] = useState<FormState>(emptyForm);
   const [recordId, setRecordId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -177,6 +178,10 @@ export function BusinessDnaPage() {
   }
 
   async function handleFetchFromWebsite() {
+    if (!canWrite) {
+      setExtractError('Ask an owner, admin, or editor to update Business DNA.');
+      return;
+    }
     const websiteUrl = form.websiteUrl.trim();
     if (!websiteUrl) {
       setExtractError('Enter a website URL first.');
@@ -225,6 +230,11 @@ export function BusinessDnaPage() {
   }
 
   async function handleLogoUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!canWrite) {
+      event.target.value = '';
+      setError('Ask an owner, admin, or editor to upload brand assets.');
+      return;
+    }
     if (!supabase || !organization?.id || !user?.id) return;
 
     const file = event.target.files?.[0];
@@ -279,11 +289,17 @@ export function BusinessDnaPage() {
   }
 
   function clearLogo() {
+    if (!canWrite) return;
     setForm((current) => ({ ...current, logo: emptyLogo }));
     setMessage('Logo removed from Business DNA. Save to keep this change.');
   }
 
   async function handleQrUpload(event: ChangeEvent<HTMLInputElement>) {
+    if (!canWrite) {
+      event.target.value = '';
+      setError('Ask an owner, admin, or editor to upload brand assets.');
+      return;
+    }
     if (!supabase || !organization?.id || !user?.id) return;
 
     const file = event.target.files?.[0];
@@ -294,7 +310,7 @@ export function BusinessDnaPage() {
     setError('');
 
     if (!qrMimeTypes.includes(file.type)) {
-      setError('Upload a PNG, JPG, WebP, or SVG QR code.');
+      setError('Upload a PNG, JPG, or WebP QR code.');
       return;
     }
 
@@ -338,12 +354,17 @@ export function BusinessDnaPage() {
   }
 
   function clearQr() {
+    if (!canWrite) return;
     setForm((current) => ({ ...current, qr: emptyLogo }));
     setMessage('QR code removed from Business DNA. Save to keep this change.');
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to update Business DNA.');
+      return;
+    }
     if (!supabase || !organization?.id || !user?.id) return;
 
     setSaving(true);
@@ -428,7 +449,9 @@ export function BusinessDnaPage() {
             <Dna size={21} />
           </div>
 
+          {!canWrite ? <p className="form-message warning">You can view Business DNA. Ask an owner, admin, or editor to make changes.</p> : null}
           <form className="draft-form" onSubmit={handleSubmit}>
+            <fieldset className="role-gated-fieldset" disabled={!canWrite}>
             <label>
               <span>Website URL</span>
               <div className="dna-website-row">
@@ -487,7 +510,7 @@ export function BusinessDnaPage() {
                   <label className="icon-text-button dna-logo-upload">
                     {uploadingQr ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
                     <span>{uploadingQr ? 'Uploading' : 'Upload QR code'}</span>
-                    <input type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" onChange={handleQrUpload} disabled={uploadingQr} />
+                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleQrUpload} disabled={uploadingQr} />
                   </label>
                   <button type="button" className="icon-text-button" onClick={clearQr} disabled={!hasQr || uploadingQr}>
                     <Trash2 size={16} />
@@ -567,12 +590,13 @@ export function BusinessDnaPage() {
               {saving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
               <span>{saving ? 'Saving' : 'Save Business DNA'}</span>
             </button>
+            </fieldset>
           </form>
         </section>
       )}
 
       {organization?.org_type === 'agency' && organization?.id && user?.id ? (
-        <ClientBrandManager orgId={organization.id} userId={user.id} />
+        <ClientBrandManager orgId={organization.id} userId={user.id} canWrite={canWrite} />
       ) : null}
     </div>
   );

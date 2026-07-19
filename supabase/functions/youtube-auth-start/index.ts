@@ -6,6 +6,7 @@ import {
   googleConfig,
   handleOptions,
   jsonResponse,
+  safeAppReturnPath,
   serviceClient,
   youtubeScopes,
 } from '../_shared/youtube.ts';
@@ -21,7 +22,7 @@ Deno.serve(async (req) => {
     const user = await getAuthenticatedUser(req, supabase);
     const body = await req.json().catch(() => ({}));
     const orgId = typeof body.orgId === 'string' ? body.orgId : '';
-    const returnTo = typeof body.returnTo === 'string' ? body.returnTo : null;
+    const returnTo = safeAppReturnPath(body.returnTo, '/connections');
 
     if (!orgId) return jsonResponse({ error: 'Missing orgId.' }, 400);
     await assertOrgRole(supabase, orgId, user.id, ['owner', 'admin']);

@@ -263,6 +263,14 @@ export function SocialHubPage() {
     const title = draft.title.trim();
     const body = draft.body.trim();
     const mediaUrl = draft.mediaUrl.trim();
+    const scheduledAt = parseScheduledAt(draft.scheduledAt);
+
+    if (draft.scheduledAt && !scheduledAt) {
+      setQueueError('Choose a valid schedule date and time.');
+      return;
+    }
+
+    const isScheduled = Boolean(scheduledAt && scheduledAt.getTime() > Date.now());
 
     if (!title) {
       setQueueError('Enter a post title before publishing.');
@@ -294,7 +302,7 @@ export function SocialHubPage() {
           content_type: 'post' as const,
           campaign_id: sourceCampaignId,
           content_item_id: sourceContentItemId,
-          scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
+          scheduled_at: scheduledAt?.toISOString() ?? null,
           status: 'queued' as const,
           created_by: user.id,
         };
@@ -314,7 +322,7 @@ export function SocialHubPage() {
             body: body || null,
             media_url: mediaUrl || null,
             content_type: 'post' as const,
-            scheduled_at: draft.scheduledAt ? new Date(draft.scheduledAt).toISOString() : null,
+            scheduled_at: scheduledAt?.toISOString() ?? null,
             status: 'queued' as const,
             created_by: user.id,
           };
@@ -351,15 +359,21 @@ export function SocialHubPage() {
         const { data: targets, error: targetError } = await supabase.from('publish_targets').insert(targetRows).select('*');
         if (targetError) throw targetError;
 
-        const publishResult = await publishPostNow(post.id);
-        const nextStatus = publishResult.postStatus ?? 'queued';
-        setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: nextStatus }, targets ?? []), ...current]);
-
         const sourceNote = sourceLinkSkipped ? ' Source link skipped until the database migration is applied.' : '';
-        if ((publishResult.failed ?? 0) > 0) {
-          setQueueError(`${publishResultSummary(publishResult)}${sourceNote}`);
+
+        if (isScheduled && scheduledAt) {
+          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: 'queued' }, targets ?? []), ...current]);
+          setQueueMessage('Scheduled "' + title + '" for ' + formatDate(scheduledAt.toISOString()) + '.' + sourceNote);
         } else {
-          setQueueMessage(`Published "${title}" to ${publishResult.published ?? selectedHandles.length} selected handles.${sourceNote}`);
+          const publishResult = await publishPostNow(post.id);
+          const nextStatus = publishResult.postStatus ?? 'queued';
+          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: nextStatus }, targets ?? []), ...current]);
+
+          if ((publishResult.failed ?? 0) > 0) {
+            setQueueError(publishResultSummary(publishResult) + sourceNote);
+          } else {
+            setQueueMessage('Published "' + title + '" to ' + (publishResult.published ?? selectedHandles.length) + ' selected handles.' + sourceNote);
+          }
         }
       } else {
         const localRun: QueueRun = {
@@ -470,7 +484,7 @@ export function SocialHubPage() {
 
           <label>
             <span>Schedule</span>
-            <input type="datetime-local" value={draft.scheduledAt} onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))} />
+            <input type="datetime-local" min={localDateTimeInputValue(new Date())} value={draft.scheduledAt} onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))} />
           </label>
           <label className="draft-body-field">
             <span>Message</span>
@@ -497,7 +511,7 @@ export function SocialHubPage() {
         <div className="composer-actions">
           <button className="primary-action composer-send" type="button" disabled={selectedHandles.length === 0 || queueing || (Boolean(supabase) && (hasDemoTargets || hasUnlinkedOAuthTargets))} onClick={handleQueueSelected}>
             <Send size={18} />
-            <span>{queueing ? 'Publishing' : 'Publish now'}</span>
+            <span>{queueing ? (hasFutureSchedule(draft.scheduledAt) ? 'Scheduling' : 'Publishing') : (hasFutureSchedule(draft.scheduledAt) ? 'Schedule post' : 'Publish now')}</span>
           </button>
           <span>{selectedHandles.length === 0 ? 'Select at least one handle before publishing.' : `Ready for ${selectedHandles.length} selected handles.`}</span>
         </div>
@@ -714,6 +728,22 @@ function statusText(status: QueueRun['status']) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+function parseScheduledAt(value: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function hasFutureSchedule(value: string) {
+  const date = parseScheduledAt(value);
+  return Boolean(date && date.getTime() > Date.now());
+}
+
+function localDateTimeInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
 }
 
 function formatBytes(bytes: number) {

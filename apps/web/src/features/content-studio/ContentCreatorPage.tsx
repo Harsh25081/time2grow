@@ -643,11 +643,11 @@ export function ContentCreatorPage() {
             </div>
 
             <div className="content-mode-switch" role="tablist" aria-label="Content type">
-              <button type="button" className={form.mode === 'post' ? 'is-active' : ''} onClick={() => switchMode('post')}>
+              <button type="button" role="tab" aria-selected={form.mode === 'post'} className={form.mode === 'post' ? 'is-active' : ''} onClick={() => switchMode('post')}>
                 <FileText size={16} />
                 <span>Post</span>
               </button>
-              <button type="button" className={form.mode === 'video' ? 'is-active' : ''} onClick={() => switchMode('video')}>
+              <button type="button" role="tab" aria-selected={form.mode === 'video'} className={form.mode === 'video' ? 'is-active' : ''} onClick={() => switchMode('video')}>
                 <Video size={16} />
                 <span>Video script</span>
               </button>

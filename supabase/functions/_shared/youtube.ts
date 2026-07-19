@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { safeReturnPath } from './security.ts';
 
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -278,6 +279,14 @@ export function appReturnUrl(path = '/social?youtube=connected') {
   const appOrigin = Deno.env.get('APP_ORIGIN') || Deno.env.get('VITE_APP_URL') || '';
   if (!appOrigin) return '';
   return `${appOrigin.replace(/\/$/, '')}${path}`;
+}
+
+export function safeAppReturnUrl(value: unknown, fallbackPath = '/social?connected=failed') {
+  return appReturnUrl(safeReturnPath(value, fallbackPath));
+}
+
+export function safeAppReturnPath(value: unknown, fallbackPath = '/social?connected=failed') {
+  return safeReturnPath(value, fallbackPath);
 }
 
 export function errorResponse(error: unknown) {

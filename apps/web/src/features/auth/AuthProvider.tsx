@@ -13,6 +13,7 @@ type BootstrapState = {
 type AuthContextValue = BootstrapState & {
   configured: boolean;
   loading: boolean;
+  bootstrapError: string;
   session: Session | null;
   user: User | null;
   passwordRecovery: boolean;
@@ -79,7 +80,7 @@ async function bootstrapUser(user: User): Promise<BootstrapState> {
     throw membershipsError;
   }
 
-  let membership = existingMemberships?.[0] ?? null;
+  const membership = existingMemberships?.[0] ?? null;
 
   if (!membership) {
     const { data: organization, error: orgError } = await supabase
@@ -133,16 +134,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [bootstrap, setBootstrap] = useState<BootstrapState>(emptyBootstrap);
   const [loading, setLoading] = useState(true);
+  const [bootstrapError, setBootstrapError] = useState('');
   const [passwordRecovery, setPasswordRecovery] = useState(false);
 
   const refreshWorkspace = async () => {
     if (!supabase || !session?.user) {
       setBootstrap(emptyBootstrap);
+      setBootstrapError('');
       return;
     }
 
-    const nextBootstrap = await bootstrapUser(session.user);
-    setBootstrap(nextBootstrap);
+    setBootstrapError('');
+    try {
+      const nextBootstrap = await bootstrapUser(session.user);
+      setBootstrap(nextBootstrap);
+    } catch (error) {
+      setBootstrap(emptyBootstrap);
+      setBootstrapError(workspaceErrorMessage(error));
+    }
   };
 
   useEffect(() => {
@@ -174,9 +183,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (active) {
             setBootstrap(nextBootstrap);
           }
-        } catch {
+        } catch (error) {
           if (active) {
             setBootstrap(emptyBootstrap);
+            setBootstrapError(workspaceErrorMessage(error));
           }
         }
       }
@@ -205,12 +215,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!nextSession?.user) {
         setBootstrap(emptyBootstrap);
+        setBootstrapError('');
         return;
       }
 
+      setBootstrapError('');
       bootstrapUser(nextSession.user)
-        .then(setBootstrap)
-        .catch(() => setBootstrap(emptyBootstrap));
+        .then((nextBootstrap) => {
+          setBootstrap(nextBootstrap);
+          setBootstrapError('');
+        })
+        .catch((error) => {
+          setBootstrap(emptyBootstrap);
+          setBootstrapError(workspaceErrorMessage(error));
+        });
     });
 
     return () => {
@@ -223,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       configured: hasSupabaseConfig,
       loading,
+      bootstrapError,
       session,
       user: session?.user ?? null,
       passwordRecovery,
@@ -232,14 +251,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await supabase?.auth.signOut();
         setSession(null);
         setBootstrap(emptyBootstrap);
+        setBootstrapError('');
         setPasswordRecovery(false);
       },
       refreshWorkspace,
     }),
-    [bootstrap, loading, passwordRecovery, session],
+    [bootstrap, bootstrapError, loading, passwordRecovery, session],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+function workspaceErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return 'We could not load your workspace. Check your connection and try again.';
 }
 
 export function useAuth() {

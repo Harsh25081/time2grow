@@ -4,6 +4,7 @@ import {
   exchangeCodeForToken,
   getYouTubeChannel,
   htmlResponse,
+  safeAppReturnUrl,
   serviceClient,
   youtubeScopes,
 } from '../_shared/youtube.ts';
@@ -139,9 +140,7 @@ Deno.serve(async (req) => {
       .update({ used_at: now })
       .eq('state_token', state);
 
-    const returnTo = typeof stateRow.return_to === 'string' && stateRow.return_to
-      ? stateRow.return_to
-      : appReturnUrl('/social?youtube=connected');
+    const returnTo = safeAppReturnUrl(stateRow.return_to, '/social?youtube=connected');
 
     return htmlResponse('YouTube connected', `${channelName} is connected. Returning to time2grow...`, 200, returnTo);
   } catch (callbackError) {

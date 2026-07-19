@@ -5,6 +5,7 @@ import {
   htmlResponse,
   HttpError,
   requiredEnv,
+  safeAppReturnUrl,
   serviceClient,
   youtubeScopes,
 } from '../_shared/youtube.ts';
@@ -57,9 +58,7 @@ Deno.serve(async (req) => {
       .update({ used_at: now })
       .eq('state_token', state);
 
-    const returnTo = typeof stateRow.return_to === 'string' && stateRow.return_to
-      ? stateRow.return_to
-      : appReturnUrl(`/social?connected=${provider}`);
+    const returnTo = safeAppReturnUrl(stateRow.return_to, `/social?connected=${provider}`);
 
     return htmlResponse('Connected', 'Returning to time2grow...', 200, returnTo);
   } catch (callbackError) {

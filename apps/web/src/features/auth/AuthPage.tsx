@@ -152,10 +152,12 @@ export function AuthPage() {
           ) : null}
 
           <div className="segmented-control" role="tablist" aria-label="Authentication mode">
-            {(['signin', 'signup', 'reset'] as const).map((nextMode) => (
+            {(['signin', ...(env.publicSignupEnabled ? ['signup' as const] : []), 'reset'] as const).map((nextMode) => (
               <button
                 key={nextMode}
                 type="button"
+                role="tab"
+                aria-selected={mode === nextMode}
                 className={mode === nextMode ? 'is-active' : ''}
                 onClick={() => {
                   setMode(nextMode);
@@ -168,6 +170,7 @@ export function AuthPage() {
             ))}
           </div>
 
+          {!env.publicSignupEnabled ? <p className="field-hint">New workspaces are currently invite-only while billing and launch controls are finalized.</p> : null}
           <form className="auth-form" onSubmit={handleSubmit}>
             {mode === 'signup' ? (
               <label>
@@ -247,6 +250,11 @@ export function AuthPage() {
               <span>{loading ? 'Working' : copy.action}</span>
             </button>
           </form>
+          <footer className="public-info-links">
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/support">Support</a>
+          </footer>
         </div>
       </section>
     </main>
@@ -313,6 +321,7 @@ function UpdatePasswordPanel({ onComplete }: { onComplete: () => void }) {
             </div>
           </div>
 
+          {!env.publicSignupEnabled ? <p className="field-hint">New workspaces are currently invite-only while billing and launch controls are finalized.</p> : null}
           <form className="auth-form" onSubmit={handleSubmit}>
             <label>
               <span>New password</span>
@@ -350,6 +359,11 @@ function UpdatePasswordPanel({ onComplete }: { onComplete: () => void }) {
               <span>{loading ? 'Working' : 'Update password'}</span>
             </button>
           </form>
+          <footer className="public-info-links">
+            <a href="/privacy">Privacy</a>
+            <a href="/terms">Terms</a>
+            <a href="/support">Support</a>
+          </footer>
         </div>
       </section>
     </main>

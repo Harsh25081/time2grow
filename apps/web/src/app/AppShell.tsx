@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   Bot,
@@ -8,24 +8,35 @@ import {
   Inbox,
   Link2,
   LogOut,
+  Menu,
   Send,
   Settings,
   Sparkles,
   Target,
+  X,
 } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
-import { BusinessDnaPage } from '../features/business-dna/BusinessDnaPage';
-import { ConnectionsPage } from '../features/connections/ConnectionsPage';
-import { ContentCreatorPage } from '../features/content-studio/ContentCreatorPage';
-import { PosterStudioAiPage } from '../features/poster-studio/PosterStudioAiPage';
+
 import { useAuth } from '../features/auth/AuthProvider';
-import { SocialHubPage } from '../features/social-hub/SocialHubPage';
-import { TasksPage } from '../features/tasks/TasksPage';
+
 import { deriveBrandDisplayName } from '../features/business-dna/brandIdentity';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
+
+const BusinessDnaPage = lazy(() => import('../features/business-dna/BusinessDnaPage').then((module) => ({ default: module.BusinessDnaPage })));
+const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
+const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
+const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
+const SocialHubPage = lazy(() => import('../features/social-hub/SocialHubPage').then((module) => ({ default: module.SocialHubPage })));
+const TasksPage = lazy(() => import('../features/tasks/TasksPage').then((module) => ({ default: module.TasksPage })));
+
+type WorkspaceDashboardStats = {
+  aiUsageToday: number;
+  distributionHandles: number;
+  planKey: string;
+};
 
 type NavItem = {
   to: string;
@@ -45,6 +56,9 @@ const primaryNav: NavItem[] = [
   { to: '/inbox', label: 'Inbox', icon: Inbox },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
+
+const mobilePrimaryNav = primaryNav.filter((item) => ['/', '/business-dna', '/content', '/poster-ai', '/social'].includes(item.to));
+const mobileMoreNav = primaryNav.filter((item) => !mobilePrimaryNav.includes(item));
 
 const modules = [
   {
@@ -79,15 +93,12 @@ const modules = [
   },
 ];
 
-const stats = [
-  { label: 'AI calls today', value: '0', hint: 'Cap ready' },
-  { label: 'Workspace plan', value: 'Free', hint: 'Metered later' },
-  { label: 'Distribution targets', value: '30', hint: 'Live setup' },
-];
 
 export function AppShell() {
   const { profile, organization, membership, signOut, configured } = useAuth();
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
+  const [dashboardStats, setDashboardStats] = useState<WorkspaceDashboardStats | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const displayOrgName = useMemo(() => deriveBrandDisplayName(organization?.name, businessDna), [organization?.name, businessDna]);
 
   useEffect(() => {
@@ -109,6 +120,29 @@ export function AppShell() {
     }
 
     loadBusinessDna();
+    return () => {
+      active = false;
+    };
+  }, [organization?.id]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadDashboardStats() {
+      if (!supabase || !organization?.id) {
+        setDashboardStats(null);
+        return;
+      }
+
+      const { data, error } = await supabase.rpc('workspace_dashboard_stats', {
+        target_org_id: organization.id,
+      });
+
+      if (!active) return;
+      setDashboardStats(error ? null : parseDashboardStats(data));
+    }
+
+    loadDashboardStats();
     return () => {
       active = false;
     };
@@ -146,7 +180,8 @@ export function AppShell() {
       </aside>
 
       <main className="main-surface">
-        <Routes>
+        <Suspense fallback={<section className="empty-state" aria-label="Loading module"><span>Loading module…</span></section>}>
+          <Routes>
           <Route
             path="/"
             element={
@@ -154,6 +189,8 @@ export function AppShell() {
                 configured={configured}
                 profileName={profile?.full_name ?? 'Creator'}
                 orgName={displayOrgName}
+                planKey={organization?.plan_key ?? 'unknown'}
+                stats={dashboardStats}
               />
             }
           />
@@ -167,8 +204,9 @@ export function AppShell() {
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
           <Route path="/settings" element={<ModulePlaceholder title="Settings" icon={Settings} />} />
-          <Route path="*" element={<NavigateHome />} />
-        </Routes>
+            <Route path="*" element={<NavigateHome />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <button className="maya-launcher" type="button" title="Maya assistant — coming soon" disabled>
@@ -176,13 +214,42 @@ export function AppShell() {
         <span>Maya · Soon</span>
       </button>
 
+      {mobileMenuOpen ? (
+        <nav className="mobile-more-menu" id="mobile-more-menu" aria-label="More navigation">
+          <div className="mobile-more-menu__header">
+            <strong>More</strong>
+            <button className="icon-button" type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close more navigation">
+              <X size={18} />
+            </button>
+          </div>
+          <div className="mobile-more-menu__grid">
+            {mobileMoreNav.map((item) => (
+              <NavLink key={item.to} to={item.to} className="mobile-more-menu__item" onClick={() => setMobileMenuOpen(false)}>
+                <item.icon size={20} />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
+      ) : null}
+
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {primaryNav.map((item) => (
-          <NavLink key={item.to} to={item.to} end={item.to === '/'} className="bottom-nav__item">
+        {mobilePrimaryNav.map((item) => (
+          <NavLink key={item.to} to={item.to} end={item.to === '/'} className="bottom-nav__item" onClick={() => setMobileMenuOpen(false)}>
             <item.icon size={21} />
             <span>{item.label}</span>
           </NavLink>
         ))}
+        <button
+          className={mobileMenuOpen ? 'bottom-nav__item active' : 'bottom-nav__item'}
+          type="button"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="mobile-more-menu"
+        >
+          <Menu size={21} />
+          <span>More</span>
+        </button>
       </nav>
     </div>
   );
@@ -192,11 +259,21 @@ function Dashboard({
   configured,
   profileName,
   orgName,
+  planKey,
+  stats,
 }: {
   configured: boolean;
   profileName: string;
   orgName: string;
+  planKey: string;
+  stats: WorkspaceDashboardStats | null;
 }) {
+  const workspaceStats = [
+    { label: 'AI units today', value: stats ? String(stats.aiUsageToday) : '—', hint: stats ? 'of 40 daily units' : 'Usage unavailable' },
+    { label: 'Workspace plan', value: titleCase(stats?.planKey ?? planKey), hint: 'Current workspace plan' },
+    { label: 'Distribution handles', value: stats ? String(stats.distributionHandles) : '—', hint: stats ? 'Enabled destinations' : 'Count unavailable' },
+  ];
+
   return (
     <div className="page-stack">
       <header className="page-header">
@@ -210,7 +287,7 @@ function Dashboard({
       </header>
 
       <section className="stats-grid" aria-label="Workspace stats">
-        {stats.map((stat) => (
+        {workspaceStats.map((stat) => (
           <article className="stat-card" key={stat.label}>
             <span>{stat.label}</span>
             <strong>{stat.value}</strong>
@@ -279,6 +356,27 @@ function ModulePlaceholder({ title, icon: Icon }: { title: string; icon: typeof 
       </section>
     </div>
   );
+}
+
+function parseDashboardStats(value: unknown): WorkspaceDashboardStats | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.aiUsageToday !== 'number'
+    || typeof record.distributionHandles !== 'number'
+    || typeof record.planKey !== 'string'
+  ) {
+    return null;
+  }
+  return {
+    aiUsageToday: record.aiUsageToday,
+    distributionHandles: record.distributionHandles,
+    planKey: record.planKey,
+  };
+}
+
+function titleCase(value: string) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' ') : 'Unknown';
 }
 
 function NavigateHome() {

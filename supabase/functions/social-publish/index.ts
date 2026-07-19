@@ -12,6 +12,7 @@ import {
   serviceClient,
   uploadVideoToYouTube,
 } from '../_shared/youtube.ts';
+import { redactProviderMessage } from '../_shared/security.ts';
 
 type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
 
@@ -19,14 +20,19 @@ Deno.serve(async (req) => {
   const options = handleOptions(req);
   if (options) return options;
 
+  let activeClaim: { postId: string; claimId: string } | null = null;
+
   try {
     if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed.' }, 405);
 
     const supabase = serviceClient();
-    const user = await getAuthenticatedUser(req, supabase);
     const body = await req.json().catch(() => ({}));
     const postId = typeof body.postId === 'string' ? body.postId : '';
+    const schedulerClaimId = typeof body.claimId === 'string' ? body.claimId : '';
     if (!postId) return jsonResponse({ error: 'Missing postId.' }, 400);
+
+    const schedulerRequest = isSchedulerRequest(req);
+    const user = schedulerRequest ? null : await getAuthenticatedUser(req, supabase);
 
     const { data: post, error: postError } = await supabase
       .from('social_posts')
@@ -35,25 +41,52 @@ Deno.serve(async (req) => {
       .single();
 
     if (postError || !post) throw new HttpError(404, postError?.message ?? 'Post not found.');
-    await assertOrgRole(supabase, post.org_id, user.id, ['owner', 'admin', 'editor']);
+    if (schedulerRequest) {
+      if (!schedulerClaimId || post.status !== 'publishing' || post.delivery_claim_id !== schedulerClaimId) {
+        throw new HttpError(409, 'This scheduled delivery claim is no longer active.');
+      }
+      activeClaim = { postId, claimId: schedulerClaimId };
+    } else {
+      await assertOrgRole(supabase, post.org_id, user!.id, ['owner', 'admin', 'editor']);
+    }
+
+    const scheduledAt = typeof post.scheduled_at === 'string' ? new Date(post.scheduled_at) : null;
+    if (!schedulerRequest && scheduledAt && !Number.isNaN(scheduledAt.getTime()) && scheduledAt.getTime() > Date.now()) {
+      throw new HttpError(409, 'This post is scheduled for ' + scheduledAt.toISOString() + ' and cannot be published early.');
+    }
+
+    if (!schedulerRequest) {
+      const manualClaimId = crypto.randomUUID();
+      const { data: claimedPost, error: claimError } = await supabase
+        .from('social_posts')
+        .update({ status: 'publishing', delivery_claim_id: manualClaimId, delivery_claimed_at: new Date().toISOString() })
+        .eq('id', postId)
+        .in('status', ['draft', 'queued', 'failed', 'partial_failed'])
+        .is('delivery_claim_id', null)
+        .select('id')
+        .maybeSingle();
+
+      if (claimError) throw claimError;
+      if (!claimedPost) throw new HttpError(409, 'This post is already publishing or has already been published.');
+      activeClaim = { postId, claimId: manualClaimId };
+    }
 
     const { data: targets, error: targetsError } = await supabase
       .from('publish_targets')
       .select('*')
       .eq('social_post_id', postId)
-      .eq('org_id', post.org_id);
+      .eq('org_id', post.org_id)
+      .eq('status', 'queued');
 
     if (targetsError) throw targetsError;
-    if (!targets?.length) return jsonResponse({ error: 'No publish targets found for this post.' }, 400);
+    if (!targets?.length) throw new HttpError(400, 'No queued publish targets found for this post.');
 
     const handleIds = targets
       .map((target) => target.distribution_handle_id)
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
-    const handlesById = await loadHandles(supabase, handleIds);
+    const handlesById = await loadHandles(supabase, post.org_id, handleIds);
     const asset = await loadMediaAsset(supabase, post);
     const results = [];
-
-    await supabase.from('social_posts').update({ status: 'publishing' }).eq('id', postId);
 
     for (const target of targets) {
       const handle = target.distribution_handle_id ? handlesById.get(target.distribution_handle_id) : null;
@@ -95,7 +128,7 @@ Deno.serve(async (req) => {
 
         results.push({ targetId: target.id, provider, label: target.target_label, status: 'published', externalId: result.externalId ?? null });
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Publish failed.';
+        const message = safeErrorMessage(error, 'Publish failed.');
         await supabase
           .from('publish_targets')
           .update({
@@ -111,7 +144,20 @@ Deno.serve(async (req) => {
 
     const failed = results.filter((result) => result.status === 'failed').length;
     const postStatus = failed === 0 ? 'published' : failed === results.length ? 'failed' : 'partial_failed';
-    await supabase.from('social_posts').update({ status: postStatus }).eq('id', postId);
+    const completedClaim = activeClaim;
+    if (!completedClaim) throw new HttpError(409, 'The active delivery claim was lost. Try publishing again.');
+    const { data: finalizedPost, error: finalizeError } = await supabase
+      .from('social_posts')
+      .update({ status: postStatus, delivery_claim_id: null, delivery_claimed_at: null })
+      .eq('id', postId)
+      .eq('delivery_claim_id', completedClaim.claimId)
+      .select('id')
+      .maybeSingle();
+
+    if (finalizeError) throw finalizeError;
+    if (!finalizedPost) throw new HttpError(409, 'The delivery claim expired before publishing completed.');
+
+    activeClaim = null;
 
     return jsonResponse({
       postId,
@@ -121,15 +167,36 @@ Deno.serve(async (req) => {
       results,
     });
   } catch (error) {
+    if (activeClaim) await failActiveClaim(activeClaim, error).catch(() => undefined);
     return errorResponse(error);
   }
 });
 
-async function loadHandles(supabase: ReturnType<typeof serviceClient>, handleIds: string[]) {
+function isSchedulerRequest(req: Request) {
+  const expected = Deno.env.get('SCHEDULED_JOBS_SECRET') ?? '';
+  const actual = req.headers.get('x-scheduled-jobs-secret') ?? '';
+  if (!expected || !actual) return false;
+
+  const encoder = new TextEncoder();
+  const a = encoder.encode(actual);
+  const b = encoder.encode(expected);
+  let difference = a.length ^ b.length;
+  const length = Math.max(a.length, b.length);
+  for (let index = 0; index < length; index += 1) {
+    difference |= (a[index % Math.max(a.length, 1)] ?? 0) ^ (b[index % Math.max(b.length, 1)] ?? 0);
+  }
+  return difference === 0;
+}
+
+async function loadHandles(supabase: ReturnType<typeof serviceClient>, orgId: string, handleIds: string[]) {
   const handlesById = new Map<string, Record<string, unknown>>();
   if (handleIds.length === 0) return handlesById;
 
-  const { data, error } = await supabase.from('distribution_handles').select('*').in('id', handleIds);
+  const { data, error } = await supabase
+    .from('distribution_handles')
+    .select('*')
+    .eq('org_id', orgId)
+    .in('id', handleIds);
   if (error) throw error;
 
   for (const handle of data ?? []) {
@@ -146,6 +213,7 @@ async function loadMediaAsset(supabase: ReturnType<typeof serviceClient>, post: 
       .from('social_media_assets')
       .select('*')
       .eq('social_post_id', postId)
+      .eq('org_id', stringValue(post.org_id) ?? '')
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -539,11 +607,42 @@ async function fetchJson(url: string, init?: RequestInit) {
       ? json.error.message
       : typeof json?.message === 'string'
         ? json.message
-        : await googleErrorMessage(response, `Request failed: ${url}`);
-    throw new HttpError(response.status, message);
+        : await googleErrorMessage(response, 'The publishing provider rejected the request.');
+    throw new HttpError(response.status, redactProviderError(message));
   }
 
   return json;
+}
+
+async function failActiveClaim(claim: { postId: string; claimId: string }, error: unknown) {
+  const supabase = serviceClient();
+  const message = safeErrorMessage(error, 'Publishing failed before delivery started.');
+  await supabase
+    .from('social_posts')
+    .update({ status: 'failed', delivery_claim_id: null, delivery_claimed_at: null })
+    .eq('id', claim.postId)
+    .eq('delivery_claim_id', claim.claimId);
+  console.error(JSON.stringify({ level: 'error', postId: claim.postId, message }));
+}
+
+function safeErrorMessage(error: unknown, fallback: string) {
+  return redactProviderMessage(error, fallback, configuredProviderSecrets());
+}
+
+function redactProviderError(value: string) {
+  return redactProviderMessage(value, 'Provider request failed.', configuredProviderSecrets());
+}
+
+function configuredProviderSecrets() {
+  return [
+    'TELEGRAM_BOT_TOKEN',
+    'META_ACCESS_TOKEN',
+    'FACEBOOK_PAGE_ACCESS_TOKEN',
+    'INSTAGRAM_ACCESS_TOKEN',
+    'LINKEDIN_ACCESS_TOKEN',
+    'WHATSAPP_ACCESS_TOKEN',
+    'SLACK_BOT_TOKEN',
+  ].map((name) => Deno.env.get(name) ?? '').filter(Boolean);
 }
 
 async function formPost(url: string, payload: Record<string, string>) {

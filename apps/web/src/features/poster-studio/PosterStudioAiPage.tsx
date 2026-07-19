@@ -90,7 +90,8 @@ type PosterAgentPayload = {
 };
 
 export function PosterStudioAiPage() {
-  const { organization, user } = useAuth();
+  const { organization, user, membership } = useAuth();
+  const canWrite = membership?.role === 'owner' || membership?.role === 'admin' || membership?.role === 'editor';
   const [businessDna, setBusinessDna] = useState<BusinessDnaRow | null>(null);
   const [logoUrl, setLogoUrl] = useState('');
   const [logoDisplayUrl, setLogoDisplayUrl] = useState('');
@@ -248,6 +249,11 @@ export function PosterStudioAiPage() {
   }
 
   function handleProductImageChange(event: ChangeEvent<HTMLInputElement>) {
+    if (!canWrite) {
+      event.target.value = '';
+      setError('Ask an owner, admin, or editor to generate posters.');
+      return;
+    }
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
@@ -280,12 +286,17 @@ export function PosterStudioAiPage() {
   }
 
   function clearProductImage() {
+    if (!canWrite) return;
     setProductImage((current) => {
       releaseProductImage(current);
       return null;
     });
   }
   async function handleGenerate() {
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to generate posters.');
+      return;
+    }
     if (!brief.trim()) {
       setError('Enter a poster brief first.');
       return;
@@ -563,6 +574,10 @@ export function PosterStudioAiPage() {
   }
 
   async function handleSave(scope: 'selected' | 'all' = 'selected') {
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to save posters.');
+      return;
+    }
     if (!supabase || !organization?.id || !user?.id) return;
     setSaving(true);
     setMessage('');
@@ -612,6 +627,8 @@ export function PosterStudioAiPage() {
         </div>
       </header>
 
+      {!canWrite ? <p className="form-message warning">You can view and download posters. Ask an owner, admin, or editor to generate or save them.</p> : null}
+
       {loading ? (
         <section className="empty-state" aria-label="Loading AI Poster Studio">
           <Loader2 className="spin" size={28} />
@@ -647,11 +664,11 @@ export function PosterStudioAiPage() {
                       <strong>{productImage.name}</strong>
                       <small>{productImage.cutout ? 'Background removed when possible' : 'Used only for this poster'}</small>
                     </div>
-                    <button type="button" className="poster-upload-remove" onClick={clearProductImage}>Remove</button>
+                    <button type="button" className="poster-upload-remove" onClick={clearProductImage} disabled={!canWrite}>Remove</button>
                   </div>
                 ) : (
                   <label className="poster-upload-drop">
-                    <input type="file" accept="image/*" onChange={handleProductImageChange} />
+                    <input type="file" accept="image/*" onChange={handleProductImageChange} disabled={!canWrite} />
                     <span>Upload product photo</span>
                     <small>For this poster only, not Business DNA</small>
                   </label>
@@ -729,7 +746,7 @@ export function PosterStudioAiPage() {
                 <option value="youtube">YouTube - 1280x720</option>
               </select>
             </label>
-            <button type="button" className="primary-action" onClick={handleGenerate} disabled={generating}>
+            <button type="button" className="primary-action" onClick={handleGenerate} disabled={generating || !canWrite}>
               {generating ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
               <span>{generating ? (posterCount === 2 ? 'Creating posters' : 'Creating poster') : (posterCount === 2 ? 'Generate 2 posters' : 'Generate poster')}</span>
             </button>
@@ -760,8 +777,8 @@ export function PosterStudioAiPage() {
               <div className="poster-actions">
                 <button type="button" className="primary-action" onClick={() => handleDownload('selected')} disabled={!usingAi && !selectedConcept}><Download size={16} /><span>{usingAi && aiPosters.length > 1 ? 'Download selected' : 'Download PNG'}</span></button>
                 {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleDownload('all')}><Download size={16} /><span>Download all</span></button> : null}
-                <button type="button" className="icon-text-button" onClick={() => handleSave('selected')} disabled={saving || !selectedDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : usingAi && aiPosters.length > 1 ? 'Save selected' : 'Save'}</span></button>
-                {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleSave('all')} disabled={saving || !selectedDna}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save all'}</span></button> : null}
+                <button type="button" className="icon-text-button" onClick={() => handleSave('selected')} disabled={saving || !canWrite || !selectedDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : usingAi && aiPosters.length > 1 ? 'Save selected' : 'Save'}</span></button>
+                {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleSave('all')} disabled={saving || !canWrite || !selectedDna}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save all'}</span></button> : null}
                 <Link className="icon-text-button" to="/social"><Send size={16} /><span>Social Hub</span></Link>
               </div>
             </div>
