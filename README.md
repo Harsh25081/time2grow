@@ -24,11 +24,10 @@ Deploy the Supabase function and store `OPENAI_API_KEY` as a Supabase Function s
 
 ## Current Status
 
-This is an early production build, not a finished public SaaS launch yet. The core foundation is in place: authentication, organization/workspace data, Business DNA, Social Hub, media handling, Supabase migrations, Edge Functions, and the first Poster AI workflow.
+This is an early production build, not a finished public SaaS launch yet. The core foundation is in place: authentication, organization/workspace data, Business DNA, Campaigns, Content Studio, Poster AI, Social Hub, Tasks, Analytics v1, media handling, Supabase migrations, Edge Functions, and the first Poster AI workflow.
 
 Still needed before full public launch:
 
-- Automated tests and CI.
 - Billing and plan limits.
 - Sentry, uptime checks, and production monitoring.
 - Public legal pages: privacy policy, terms, refund/cancellation policy where needed.
@@ -38,6 +37,7 @@ Still needed before full public launch:
 ## Main Modules
 
 - Business DNA: captures brand positioning, audience, website intelligence, colors, and logo.
+- Analytics: main workspace reporting page for campaign health, content/task/social throughput, AI review scores, and reporting source metrics.
 - Campaigns: main operating tree for campaign objectives, content, posters, tasks, and publishing work.
 - Content Studio: Campaigns subsection for platform-ready posts and video/ad scripts using saved Business DNA.
 - Poster Studio: Campaigns subsection for editable posters with logo, text, RGB palette, background controls, download, save, and Social Hub handoff.
@@ -242,4 +242,5 @@ More setup details live in:
 3. Save generated posters to Supabase Storage and confirm download works.
 4. Attach saved content, tasks, and social posts to campaigns during normal workflow smoke tests.
 5. Send saved poster assets to selected Social Hub handles.
-6. Add monitoring, billing, legal pages, and provider verification for public launch.
+6. Add Analytics date filters and campaign/source drill-downs once provider sync rows are flowing.
+7. Add monitoring, billing, legal pages, and provider verification for public launch.

@@ -2008,8 +2008,123 @@ a {
   color: var(--text);
   white-space: normal;
 }
+
+.analytics-health-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.analytics-health-card {
+  display: grid;
+  gap: 12px;
+}
+
+.analytics-health-card p,
+.analytics-health-card small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.analytics-health-card p {
+  color: #374151;
+  font-weight: 700;
+}
+
+.analytics-meter {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #f1f5f9;
+}
+
+.analytics-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--green);
+}
+
+.analytics-meter.warning span {
+  background: var(--amber);
+}
+
+.analytics-meter.blue span {
+  background: var(--blue);
+}
+
+.analytics-row .saved-content-row__side strong {
+  font-size: 26px;
+}
+
+.analytics-source-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.analytics-source-card {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.analytics-source-card > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.analytics-source-card strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analytics-source-card span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.analytics-source-card dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.analytics-source-card dl div {
+  display: grid;
+  gap: 4px;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.analytics-source-card dt {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.analytics-source-card dd {
+  margin: 0;
+  color: var(--text);
+  font-weight: 900;
+}
 @media (max-width: 1040px) {
   .content-creator-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analytics-health-grid,
+  .analytics-source-grid {
     grid-template-columns: 1fr;
   }
 }

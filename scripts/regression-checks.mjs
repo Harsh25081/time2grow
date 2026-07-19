@@ -174,6 +174,16 @@ requirePattern(
   'apps/web/src/app/AppShell.tsx',
   /settingsNav[\s\S]*\/settings\/connections[\s\S]*path="\/connections" element=\{<Navigate to="\/settings\/connections"/,
 );
+requirePattern(
+  'Analytics page is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /AnalyticsPage[\s\S]*to: '\/analytics'[\s\S]*path="\/analytics"/,
+);
+requirePattern(
+  'Analytics page reads workflow and reporting data',
+  'apps/web/src/features/analytics/AnalyticsPage.tsx',
+  /from\('campaigns'\)[\s\S]*from\('content_items'\)[\s\S]*from\('marketing_tasks'\)[\s\S]*from\('social_posts'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('analytics_sources'\)/,
+);
 
 requirePattern(
   'feature pages are route-level lazy chunks',

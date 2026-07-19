@@ -66,15 +66,17 @@ One operational view across the workspace and its clients:
 
 ## Where we are today
 
-Live pages: Business DNA, Campaigns, Content Studio, Poster AI, Social Hub, Tasks, and Settings /
-Connections. Campaigns is the main operating tree; Content, AI Posters, Social, and Tasks sit under
-it. Connections is workspace configuration under Settings. The Home dashboard has early live stats.
-Leads / Inbox / Settings overview are stubs; analytics, competitors, maya, and trends are empty
-folders.
+Live pages: Business DNA, Analytics, Campaigns, Content Studio, Poster AI, Social Hub, Tasks, and
+Settings / Connections. Campaigns is the main operating tree; Content, AI Posters, Social, and Tasks
+sit under it. Connections is workspace configuration under Settings. The Home dashboard has early
+live stats, and Analytics v1 reads campaign, content, task, social, reporting source, and reporting
+metric data for a workspace health view. Leads / Inbox / Settings overview are stubs; competitors,
+maya, and trends are empty folders.
 
 Existing org-scoped tables (RLS via `is_org_member` / `has_org_role`): profiles, organizations,
 memberships, invitations, business_dna, client_business_dna, campaigns, content_items, social_posts,
-publish_targets, social_media_assets, integration/oauth tables, ai_usage_log.
+publish_targets, social_media_assets, analytics_sources, analytics_metrics, integration/oauth
+tables, ai_usage_log.
 
 | Pillar | Today | Gap |
 |---|---|---|
@@ -83,6 +85,11 @@ publish_targets, social_media_assets, integration/oauth tables, ai_usage_log.
 | 3 Recurring Ops | `social_posts.scheduled_at` is one-shot | No recurrence engine |
 | 4 AI Review Layer | `review_asset` v1 checks saved content/posters against Business DNA and stores the result in `content_items.metadata.review` | Needs review history, task attachment, and richer image/dimension evidence |
 | 5 Executive Dashboard | placeholder stat tiles | Real metrics, dependent on 2-4 producing data |
+
+Implementation note: AI proof verification, SOP Tasks, and the executive view have moved forward
+since the original table was written. `review_asset` v1, `marketing_tasks`, the Tasks UI, and
+Analytics v1 are now live; the remaining gaps are review history, task attachment, recurrence
+materialization, richer charts, and provider-backed ROI confidence.
 
 ## Roadmap
 
