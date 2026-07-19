@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow AI Action"
+  short_description: "Add safe ai-handler actions"
+  default_prompt: "Use $time2grow-ai-action to add a safe action to the time2grow ai-handler."

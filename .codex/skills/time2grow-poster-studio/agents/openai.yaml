@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Poster Studio"
+  short_description: "Create finished premium poster sets"
+  default_prompt: "Use $time2grow-poster-studio to turn a brief, logo, and theme into finished premium poster concepts for time2grow."

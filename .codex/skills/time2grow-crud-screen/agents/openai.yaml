@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow CRUD Screen"
+  short_description: "Build app screens on Supabase tables"
+  default_prompt: "Use $time2grow-crud-screen to build a time2grow React CRUD page."

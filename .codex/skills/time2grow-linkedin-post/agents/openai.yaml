@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow LinkedIn Post"
+  short_description: "Write a LinkedIn feed post"
+  default_prompt: "Use $time2grow-linkedin-post to create a LinkedIn post from a time2grow brief and Business DNA."

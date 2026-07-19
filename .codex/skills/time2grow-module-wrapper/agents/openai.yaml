@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Module Wrapper"
+  short_description: "Wrap modules in SaaS-ready patterns"
+  default_prompt: "Use $time2grow-module-wrapper to scaffold a production-minded time2grow module."

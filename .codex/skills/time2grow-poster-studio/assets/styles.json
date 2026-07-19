@@ -1,0 +1,44 @@
+{
+  "value": {
+    "name": "Visualize Value",
+    "colors": {"bg":"#F7FAFC","ink":"#172033","muted":"#667085","accent":"#2563EB"},
+    "fonts": {"display":"Inter","body":"Inter"},
+    "layouts": ["bottom", "centered", "facts"],
+    "motifs": ["grid", "chart", "dashboard", "network"]
+  },
+  "premium": {
+    "name": "Minimal Premium",
+    "colors": {"bg":"#141414","ink":"#F7F1E5","muted":"#B7AA96","accent":"#C8A24C"},
+    "fonts": {"display":"Fraunces","body":"Inter"},
+    "layouts": ["centered", "bottom"],
+    "motifs": ["soft-gradient", "editorial-photo", "none"]
+  },
+  "bold": {
+    "name": "Bold Emotional",
+    "colors": {"bg":"#09090B","ink":"#FFFFFF","muted":"#C7CAD1","accent":"#F43F5E"},
+    "fonts": {"display":"Anton","body":"Inter"},
+    "layouts": ["centered", "bottom"],
+    "motifs": ["spotlight", "large-shape", "dramatic-photo"]
+  },
+  "edu": {
+    "name": "Educational",
+    "colors": {"bg":"#F8FBF8","ink":"#16302B","muted":"#5E756F","accent":"#0F766E"},
+    "fonts": {"display":"Poppins","body":"Inter"},
+    "layouts": ["facts", "bottom"],
+    "motifs": ["numbered-cards", "diagram", "line-icons"]
+  },
+  "direct": {
+    "name": "Direct Response",
+    "colors": {"bg":"#111827","ink":"#FFFFFF","muted":"#D1D5DB","accent":"#FACC15", "danger":"#EF4444"},
+    "fonts": {"display":"Montserrat","body":"Inter"},
+    "layouts": ["band", "bottom"],
+    "motifs": ["offer-band", "badge", "product-photo"]
+  },
+  "signature": {
+    "name": "time2grow Signature",
+    "colors": {"bg":"#0C1A2E","ink":"#F1ECE0","muted":"#9FB0C4","accent":"#C8A24C"},
+    "fonts": {"display":"Fraunces","body":"Inter"},
+    "layouts": ["bottom", "centered", "facts"],
+    "motifs": ["hairline-frame", "network", "dashboard-grid"]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "time2grow-signature": {
+    "label": "time2grow Signature",
+    "colors": {"bg":"#0C1A2E","ink":"#F1ECE0","muted":"#9FB0C4","accent":"#C8A24C"},
+    "baseStyle": "signature"
+  },
+  "ad96-signature": {
+    "label": "AD96 Signature",
+    "colors": {"bg":"#0C1A2E","ink":"#F1ECE0","muted":"#9FB0C4","accent":"#C8A24C"},
+    "baseStyle": "signature"
+  },
+  "clean-local-business": {
+    "label": "Clean Local Business",
+    "colors": {"bg":"#FFFFFF","ink":"#111827","muted":"#6B7280","accent":"#0EA5E9"},
+    "baseStyle": "value"
+  }
+}

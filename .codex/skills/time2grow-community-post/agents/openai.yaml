@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Community Post"
+  short_description: "Write a WhatsApp or group post"
+  default_prompt: "Use $time2grow-community-post to create a community group message from a time2grow brief and Business DNA."

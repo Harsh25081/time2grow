@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Demo Data"
+  short_description: "Seed realistic org-scoped demo data"
+  default_prompt: "Use $time2grow-demo-data to create realistic tenant-safe seed data for time2grow."

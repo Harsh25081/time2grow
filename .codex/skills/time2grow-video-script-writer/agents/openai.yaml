@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Video Script Writer"
+  short_description: "Create Telugu and English ad scripts"
+  default_prompt: "Use $time2grow-video-script-writer to create scene-by-scene Telugu or English ad scripts with timing, characters, dialogue, screenplay, and shot notes."

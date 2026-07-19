@@ -1,0 +1,4 @@
+interface:
+  display_name: "time2grow Table RLS"
+  short_description: "Create tenant-safe Supabase tables"
+  default_prompt: "Use $time2grow-table-rls to add a tenant-safe Supabase table and RLS policies."
