@@ -13,6 +13,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
 type CampaignRow = Database['public']['Tables']['campaigns']['Row'];
 type CampaignStatus = CampaignRow['status'];
@@ -24,6 +25,7 @@ type SocialPostRow = Pick<Database['public']['Tables']['social_posts']['Row'], '
 
 type CampaignForm = {
   name: string;
+  brandSelectionId: string;
   campaignType: CampaignType;
   status: CampaignStatus;
   objective: string;
@@ -72,6 +74,7 @@ const nextStatus: Partial<Record<CampaignStatus, CampaignStatus>> = {
 
 const emptyForm: CampaignForm = {
   name: '',
+  brandSelectionId: SELF_BRAND_ID,
   campaignType: 'standard',
   status: 'draft',
   objective: '',
@@ -93,6 +96,9 @@ export function CampaignsPage() {
   const [error, setError] = useState('');
   const canWrite = writerRoles.some((role) => role === membership?.role);
   const readOnly = Boolean(membership?.role) && !canWrite;
+  const isAgency = organization?.org_type === 'agency';
+  const { clients } = useBrandDna(organization?.id, isAgency);
+  const clientNameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
 
   useEffect(() => {
     let active = true;
@@ -218,6 +224,7 @@ export function CampaignsPage() {
     setEditingId(campaign.id);
     setForm({
       name: campaign.name,
+      brandSelectionId: campaign.client_business_dna_id ?? SELF_BRAND_ID,
       campaignType: campaign.type,
       status: campaign.status,
       objective: campaign.objective ?? '',
@@ -247,6 +254,7 @@ export function CampaignsPage() {
 
     const payload = {
       name,
+      client_business_dna_id: isAgency && form.brandSelectionId !== SELF_BRAND_ID ? form.brandSelectionId : null,
       type: form.campaignType,
       status: form.status,
       objective: form.objective.trim() || null,
@@ -341,6 +349,16 @@ export function CampaignsPage() {
                 <input value={form.name} onChange={(event) => updateForm('name', event.target.value)} placeholder="Example: Diwali growth campaign" />
               </label>
 
+              {isAgency ? (
+                <BrandDnaSelect
+                  label="Campaign for"
+                  selfLabel={organization?.name ?? 'Agency brand'}
+                  clients={clients}
+                  value={form.brandSelectionId}
+                  onChange={(id) => updateForm('brandSelectionId', id)}
+                />
+              ) : null}
+
               <label>
                 <span>Type</span>
                 <select value={form.campaignType} onChange={(event) => updateForm('campaignType', event.target.value as CampaignType)}>
@@ -411,6 +429,7 @@ export function CampaignsPage() {
                       {campaign.objective ? <p>{campaign.objective}</p> : <p>No objective saved yet.</p>}
                       <div className="saved-content-row__meta">
                         <span>{campaignTypeLabel(campaign.type)}</span>
+                        {isAgency ? <span>{campaign.client_business_dna_id ? clientNameById.get(campaign.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
                         <span>{campaignStatusLabel(campaign.status)}</span>
                         <span>Updated {formatDate(campaign.updated_at)}</span>
                       </div>

@@ -3,6 +3,7 @@ import { BarChart3, Loader2, TrendingUp } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 import { reportingSourceName, reportingSourceRegistry } from './reportingSources';
 
 type AnalyticsMetricRow = Database['public']['Tables']['analytics_metrics']['Row'];
@@ -44,6 +45,8 @@ export function AnalyticsReportingPage() {
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const isAgency = organization?.org_type === 'agency';
+  const { clients, selectedId: brandSelectionId, setSelectedId: setBrandSelectionId } = useBrandDna(organization?.id, isAgency);
 
   useEffect(() => {
     let active = true;
@@ -98,10 +101,12 @@ export function AnalyticsReportingPage() {
     return Array.from(keys).map((key) => ({ key, name: reportingSourceName(key) })).sort((a, b) => a.name.localeCompare(b.name));
   }, [metrics, sources]);
 
+  const brandMetrics = useMemo(() => filterByBrand(metrics, isAgency, brandSelectionId), [brandSelectionId, isAgency, metrics]);
+
   const filteredMetrics = useMemo(() => {
-    if (platformFilter === 'all') return metrics;
-    return metrics.filter((metric) => metric.source_key === platformFilter);
-  }, [metrics, platformFilter]);
+    if (platformFilter === 'all') return brandMetrics;
+    return brandMetrics.filter((metric) => metric.source_key === platformFilter);
+  }, [brandMetrics, platformFilter]);
 
   const totals = useMemo(() => sumRows(filteredMetrics), [filteredMetrics]);
   const previousTotals = useMemo(() => {
@@ -113,7 +118,7 @@ export function AnalyticsReportingPage() {
     return sumRows(filteredMetrics.slice(midpoint));
   }, [filteredMetrics]);
   const trendRows = useMemo(() => buildTrendRows(filteredMetrics), [filteredMetrics]);
-  const platformRows = useMemo(() => buildPlatformRows(metrics, sources), [metrics, sources]);
+  const platformRows = useMemo(() => buildPlatformRows(brandMetrics, sources), [brandMetrics, sources]);
   const campaignRows = useMemo(() => buildCampaignRows(filteredMetrics), [filteredMetrics]);
   const selectedPlatformName = platformFilter === 'all' ? 'All platforms' : reportingSourceName(platformFilter);
   const hasRows = filteredMetrics.length > 0;
@@ -125,15 +130,26 @@ export function AnalyticsReportingPage() {
           <p className="eyebrow">Analytics</p>
           <h2>Reporting Data</h2>
         </div>
-        <label className="analytics-platform-select">
-          <span>Platform</span>
-          <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}>
-            <option value="all">All platforms</option>
-            {platformOptions.map((platform) => (
-              <option key={platform.key} value={platform.key}>{platform.name}</option>
-            ))}
-          </select>
-        </label>
+        <div className="page-header-actions">
+          {isAgency ? (
+            <BrandDnaSelect
+              label="Report for"
+              selfLabel={organization?.name ?? 'Agency brand'}
+              clients={clients}
+              value={brandSelectionId}
+              onChange={setBrandSelectionId}
+            />
+          ) : null}
+          <label className="analytics-platform-select">
+            <span>Platform</span>
+            <select value={platformFilter} onChange={(event) => setPlatformFilter(event.target.value)}>
+              <option value="all">All platforms</option>
+              {platformOptions.map((platform) => (
+                <option key={platform.key} value={platform.key}>{platform.name}</option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
 
       {loading ? (
@@ -289,6 +305,12 @@ function sumRows(rows: AnalyticsMetricRow[]): Totals {
     }),
     { ...emptyTotals },
   );
+}
+
+function filterByBrand<T extends { client_business_dna_id: string | null }>(rows: T[], isAgency: boolean, brandSelectionId: string) {
+  if (!isAgency) return rows;
+  if (brandSelectionId === SELF_BRAND_ID) return rows.filter((row) => !row.client_business_dna_id);
+  return rows.filter((row) => row.client_business_dna_id === brandSelectionId);
 }
 
 function buildTrendRows(rows: AnalyticsMetricRow[]) {

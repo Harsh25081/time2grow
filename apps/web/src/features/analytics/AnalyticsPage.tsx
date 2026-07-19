@@ -11,11 +11,12 @@ import {
 import { supabase } from '../../lib/supabase';
 import type { Database, Json } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
-type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'updated_at'>;
-type ContentItemRow = Pick<Database['public']['Tables']['content_items']['Row'], 'id' | 'campaign_id' | 'content_type' | 'metadata' | 'status' | 'created_at'>;
-type MarketingTaskRow = Pick<Database['public']['Tables']['marketing_tasks']['Row'], 'id' | 'campaign_id' | 'status' | 'due_at' | 'recurrence' | 'created_at'>;
-type SocialPostRow = Pick<Database['public']['Tables']['social_posts']['Row'], 'id' | 'campaign_id' | 'status' | 'scheduled_at' | 'created_at'>;
+type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'updated_at' | 'client_business_dna_id'>;
+type ContentItemRow = Pick<Database['public']['Tables']['content_items']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'content_type' | 'metadata' | 'status' | 'created_at'>;
+type MarketingTaskRow = Pick<Database['public']['Tables']['marketing_tasks']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'status' | 'due_at' | 'recurrence' | 'created_at'>;
+type SocialPostRow = Pick<Database['public']['Tables']['social_posts']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'status' | 'scheduled_at' | 'created_at'>;
 type AnalyticsMetricRow = Database['public']['Tables']['analytics_metrics']['Row'];
 type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
 
@@ -53,6 +54,11 @@ export function AnalyticsPage() {
   const [sources, setSources] = useState<AnalyticsSourceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<LoadError[]>([]);
+  const isAgency = organization?.org_type === 'agency';
+  const { clients, selectedId: brandSelectionId, setSelectedId: setBrandSelectionId } = useBrandDna(organization?.id, isAgency);
+  const selectedBrandName = brandSelectionId === SELF_BRAND_ID
+    ? organization?.name ?? 'Agency brand'
+    : clients.find((client) => client.id === brandSelectionId)?.name ?? 'Client brand';
 
   useEffect(() => {
     let active = true;
@@ -82,25 +88,25 @@ export function AnalyticsPage() {
       ] = await Promise.all([
         supabase
           .from('campaigns')
-          .select('id, name, status, updated_at')
+          .select('id, name, status, updated_at, client_business_dna_id')
           .eq('org_id', organization.id)
           .order('updated_at', { ascending: false })
           .limit(100),
         supabase
           .from('content_items')
-          .select('id, campaign_id, content_type, metadata, status, created_at')
+          .select('id, campaign_id, client_business_dna_id, content_type, metadata, status, created_at')
           .eq('org_id', organization.id)
           .order('created_at', { ascending: false })
           .limit(500),
         supabase
           .from('marketing_tasks')
-          .select('id, campaign_id, status, due_at, recurrence, created_at')
+          .select('id, campaign_id, client_business_dna_id, status, due_at, recurrence, created_at')
           .eq('org_id', organization.id)
           .order('created_at', { ascending: false })
           .limit(500),
         supabase
           .from('social_posts')
-          .select('id, campaign_id, status, scheduled_at, created_at')
+          .select('id, campaign_id, client_business_dna_id, status, scheduled_at, created_at')
           .eq('org_id', organization.id)
           .order('created_at', { ascending: false })
           .limit(500),
@@ -144,23 +150,29 @@ export function AnalyticsPage() {
     };
   }, [organization?.id]);
 
+  const scopedCampaigns = useMemo(() => filterByBrand(campaigns, isAgency, brandSelectionId), [brandSelectionId, campaigns, isAgency]);
+  const scopedContentItems = useMemo(() => filterByBrand(contentItems, isAgency, brandSelectionId), [brandSelectionId, contentItems, isAgency]);
+  const scopedTasks = useMemo(() => filterByBrand(tasks, isAgency, brandSelectionId), [brandSelectionId, tasks, isAgency]);
+  const scopedSocialPosts = useMemo(() => filterByBrand(socialPosts, isAgency, brandSelectionId), [brandSelectionId, socialPosts, isAgency]);
+  const scopedMetrics = useMemo(() => filterByBrand(metrics, isAgency, brandSelectionId), [brandSelectionId, isAgency, metrics]);
+
   const analytics = useMemo(() => {
-    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'active').length;
-    const approvedContent = contentItems.filter((item) => approvedContentStatuses.includes(item.status)).length;
-    const posters = contentItems.filter((item) => item.content_type === 'poster').length;
-    const publishedPosts = socialPosts.filter((post) => post.status === 'published').length;
-    const queuedPosts = socialPosts.filter((post) => post.status === 'queued' || post.status === 'publishing').length;
-    const openTasks = tasks.filter((task) => !completedTaskStatuses.includes(task.status)).length;
-    const recurringTasks = tasks.filter((task) => task.recurrence !== 'none').length;
-    const overdueTasks = tasks.filter((task) => isOverdue(task)).length;
-    const reviewScores = contentItems
+    const activeCampaigns = scopedCampaigns.filter((campaign) => campaign.status === 'active').length;
+    const approvedContent = scopedContentItems.filter((item) => approvedContentStatuses.includes(item.status)).length;
+    const posters = scopedContentItems.filter((item) => item.content_type === 'poster').length;
+    const publishedPosts = scopedSocialPosts.filter((post) => post.status === 'published').length;
+    const queuedPosts = scopedSocialPosts.filter((post) => post.status === 'queued' || post.status === 'publishing').length;
+    const openTasks = scopedTasks.filter((task) => !completedTaskStatuses.includes(task.status)).length;
+    const recurringTasks = scopedTasks.filter((task) => task.recurrence !== 'none').length;
+    const overdueTasks = scopedTasks.filter((task) => isOverdue(task)).length;
+    const reviewScores = scopedContentItems
       .map((item) => reviewScore(item.metadata))
       .filter((score): score is number => score !== null);
     const averageReviewScore = reviewScores.length > 0
       ? Math.round(reviewScores.reduce((total, score) => total + score, 0) / reviewScores.length)
       : null;
 
-    const totals = metrics.reduce(
+    const totals = scopedMetrics.reduce(
       (current, row) => ({
         spend: current.spend + Number(row.spend),
         impressions: current.impressions + Number(row.impressions),
@@ -190,12 +202,12 @@ export function AnalyticsPage() {
       roas,
       connectedSources,
     };
-  }, [campaigns, contentItems, metrics, socialPosts, sources, tasks]);
+  }, [scopedCampaigns, scopedContentItems, scopedMetrics, scopedSocialPosts, scopedTasks, sources]);
 
-  const campaignRollups = useMemo(() => buildCampaignRollups(campaigns, contentItems, tasks, socialPosts, metrics), [campaigns, contentItems, metrics, socialPosts, tasks]);
-  const sourceRollups = useMemo(() => buildSourceRollups(metrics, sources), [metrics, sources]);
-  const hasWorkflowData = campaigns.length + contentItems.length + tasks.length + socialPosts.length > 0;
-  const hasReportingData = metrics.length > 0;
+  const campaignRollups = useMemo(() => buildCampaignRollups(scopedCampaigns, scopedContentItems, scopedTasks, scopedSocialPosts, scopedMetrics), [scopedCampaigns, scopedContentItems, scopedMetrics, scopedSocialPosts, scopedTasks]);
+  const sourceRollups = useMemo(() => buildSourceRollups(scopedMetrics, sources), [scopedMetrics, sources]);
+  const hasWorkflowData = scopedCampaigns.length + scopedContentItems.length + scopedTasks.length + scopedSocialPosts.length > 0;
+  const hasReportingData = scopedMetrics.length > 0;
 
   return (
     <div className="page-stack analytics-page">
@@ -204,9 +216,20 @@ export function AnalyticsPage() {
           <p className="eyebrow">Measure</p>
           <h2>Analytics Overview</h2>
         </div>
-        <span className={hasReportingData || hasWorkflowData ? 'status-pill success' : 'status-pill warning'}>
-          {hasReportingData ? `${metrics.length} metric rows` : hasWorkflowData ? 'Workflow data' : 'No data yet'}
-        </span>
+        <div className="page-header-actions">
+          {isAgency ? (
+            <BrandDnaSelect
+              label="Overview for"
+              selfLabel={organization?.name ?? 'Agency brand'}
+              clients={clients}
+              value={brandSelectionId}
+              onChange={setBrandSelectionId}
+            />
+          ) : null}
+          <span className={hasReportingData || hasWorkflowData ? 'status-pill success' : 'status-pill warning'}>
+            {hasReportingData ? `${scopedMetrics.length} metric rows` : hasWorkflowData ? `Workflow data: ${selectedBrandName}` : 'No data yet'}
+          </span>
+        </div>
       </header>
 
       {loading ? (
@@ -226,7 +249,7 @@ export function AnalyticsPage() {
             <article className="stat-card">
               <span>Active campaigns</span>
               <strong>{analytics.activeCampaigns}</strong>
-              <small>{campaigns.length} total campaigns</small>
+              <small>{scopedCampaigns.length} total campaigns</small>
             </article>
             <article className="stat-card">
               <span>Open tasks</span>
@@ -268,9 +291,9 @@ export function AnalyticsPage() {
                 <CheckCircle2 size={21} />
               </div>
               <div className="analytics-meter">
-                <span style={{ width: `${percent(analytics.approvedContent, Math.max(contentItems.length, 1))}%` }} />
+                <span style={{ width: `${percent(analytics.approvedContent, Math.max(scopedContentItems.length, 1))}%` }} />
               </div>
-              <p>{analytics.approvedContent} of {contentItems.length} saved assets are ready, queued, or published.</p>
+              <p>{analytics.approvedContent} of {scopedContentItems.length} saved assets are ready, queued, or published.</p>
               <small>{analytics.posters} poster assets · {analytics.reviewScores} reviewed assets · average review {analytics.averageReviewScore ?? '—'}</small>
             </article>
 
@@ -283,9 +306,9 @@ export function AnalyticsPage() {
                 <CalendarDays size={21} />
               </div>
               <div className="analytics-meter warning">
-                <span style={{ width: `${percent(tasks.length - analytics.openTasks, Math.max(tasks.length, 1))}%` }} />
+                <span style={{ width: `${percent(scopedTasks.length - analytics.openTasks, Math.max(scopedTasks.length, 1))}%` }} />
               </div>
-              <p>{tasks.length - analytics.openTasks} of {tasks.length} tasks are approved, done, or archived.</p>
+              <p>{scopedTasks.length - analytics.openTasks} of {scopedTasks.length} tasks are approved, done, or archived.</p>
               <small>{analytics.overdueTasks > 0 ? `${analytics.overdueTasks} overdue tasks need attention.` : 'No overdue tasks found.'}</small>
             </article>
 
@@ -301,7 +324,7 @@ export function AnalyticsPage() {
                 <span style={{ width: `${Math.min(100, analytics.connectedSources * 25)}%` }} />
               </div>
               <p>{analytics.connectedSources} reporting sources are connected or syncing.</p>
-              <small>{hasReportingData ? `${metrics.length} daily metric rows loaded.` : 'Connect reporting sources to fill spend, clicks, and revenue.'}</small>
+              <small>{hasReportingData ? `${scopedMetrics.length} daily metric rows loaded.` : 'Connect reporting sources to fill spend, clicks, and revenue.'}</small>
             </article>
           </section>
 
@@ -433,6 +456,12 @@ function buildCampaignRollups(
   }
 
   return Array.from(map.values()).sort((a, b) => campaignReadiness(b) - campaignReadiness(a));
+}
+
+function filterByBrand<T extends { client_business_dna_id: string | null }>(rows: T[], isAgency: boolean, brandSelectionId: string) {
+  if (!isAgency) return rows;
+  if (brandSelectionId === SELF_BRAND_ID) return rows.filter((row) => !row.client_business_dna_id);
+  return rows.filter((row) => row.client_business_dna_id === brandSelectionId);
 }
 
 function buildSourceRollups(metrics: AnalyticsMetricRow[], sources: AnalyticsSourceRow[]) {

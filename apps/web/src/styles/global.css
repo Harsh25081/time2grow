@@ -401,6 +401,18 @@ a {
   font-size: 30px;
 }
 
+.page-header-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.page-header-actions .poster-field {
+  min-width: min(100%, 240px);
+}
+
 .status-pill {
   min-height: 34px;
   display: inline-flex;
@@ -634,6 +646,11 @@ a {
   .page-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .page-header-actions {
+    align-items: stretch;
+    width: 100%;
   }
 
   .page-header h2 {

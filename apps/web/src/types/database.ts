@@ -324,6 +324,7 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
+          client_business_dna_id: string | null;
           source_key: string;
           campaign: string;
           metric_date: string;
@@ -339,6 +340,7 @@ export type Database = {
         Insert: {
           id?: string;
           org_id: string;
+          client_business_dna_id?: string | null;
           source_key: string;
           campaign?: string;
           metric_date: string;
@@ -352,6 +354,7 @@ export type Database = {
           created_at?: string;
         };
         Update: {
+          client_business_dna_id?: string | null;
           source_key?: string;
           campaign?: string;
           metric_date?: string;
@@ -368,6 +371,7 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
+          client_business_dna_id: string | null;
           name: string;
           type: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
           status: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
@@ -379,6 +383,7 @@ export type Database = {
         Insert: {
           id?: string;
           org_id: string;
+          client_business_dna_id?: string | null;
           name: string;
           type?: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
           status?: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
@@ -388,6 +393,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          client_business_dna_id?: string | null;
           name?: string;
           type?: 'standard' | 'influencer' | 'ads' | 'launch' | 'evergreen';
           status?: 'draft' | 'active' | 'paused' | 'completed' | 'archived';
@@ -400,6 +406,7 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
+          client_business_dna_id: string | null;
           campaign_id: string | null;
           content_type: 'post' | 'poster' | 'video';
           title: string;
@@ -414,6 +421,7 @@ export type Database = {
         Insert: {
           id?: string;
           org_id: string;
+          client_business_dna_id?: string | null;
           campaign_id?: string | null;
           content_type?: 'post' | 'poster' | 'video';
           title: string;
@@ -426,6 +434,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          client_business_dna_id?: string | null;
           campaign_id?: string | null;
           content_type?: 'post' | 'poster' | 'video';
           title?: string;
@@ -441,6 +450,7 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
+          client_business_dna_id: string | null;
           campaign_id: string | null;
           title: string;
           description: string | null;
@@ -460,6 +470,7 @@ export type Database = {
         Insert: {
           id?: string;
           org_id: string;
+          client_business_dna_id?: string | null;
           campaign_id?: string | null;
           title: string;
           description?: string | null;
@@ -477,6 +488,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          client_business_dna_id?: string | null;
           campaign_id?: string | null;
           title?: string;
           description?: string | null;
@@ -497,6 +509,7 @@ export type Database = {
         Row: {
           id: string;
           org_id: string;
+          client_business_dna_id: string | null;
           title: string;
           body: string | null;
           media_url: string | null;
@@ -512,6 +525,7 @@ export type Database = {
         Insert: {
           id?: string;
           org_id: string;
+          client_business_dna_id?: string | null;
           title: string;
           body?: string | null;
           media_url?: string | null;
@@ -525,6 +539,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          client_business_dna_id?: string | null;
           title?: string;
           body?: string | null;
           media_url?: string | null;

@@ -13,6 +13,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
 import type { Database, Json } from '../../types/database';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
 type MarketingTaskRow = Database['public']['Tables']['marketing_tasks']['Row'];
 type TaskType = MarketingTaskRow['task_type'];
@@ -72,6 +73,7 @@ const nextStatus: Partial<Record<TaskStatus, TaskStatus>> = {
 
 type TaskForm = {
   title: string;
+  brandSelectionId: string;
   taskType: TaskType;
   description: string;
   dueAt: string;
@@ -81,6 +83,7 @@ type TaskForm = {
 
 const emptyForm: TaskForm = {
   title: '',
+  brandSelectionId: SELF_BRAND_ID,
   taskType: 'publish_reel',
   description: '',
   dueAt: '',
@@ -101,6 +104,9 @@ export function TasksPage() {
   const [error, setError] = useState('');
   const canWrite = taskWriterRoles.some((role) => role === membership?.role);
   const readOnly = Boolean(membership?.role) && !canWrite;
+  const isAgency = organization?.org_type === 'agency';
+  const { clients } = useBrandDna(organization?.id, isAgency);
+  const clientNameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
 
   useEffect(() => {
     let active = true;
@@ -182,6 +188,7 @@ export function TasksPage() {
     setEditingId(task.id);
     setForm({
       title: task.title,
+      brandSelectionId: task.client_business_dna_id ?? SELF_BRAND_ID,
       taskType: task.task_type,
       description: task.description ?? '',
       dueAt: task.due_at ? task.due_at.slice(0, 10) : '',
@@ -228,6 +235,7 @@ export function TasksPage() {
 
     const payload = {
       title: form.title.trim(),
+      client_business_dna_id: isAgency && form.brandSelectionId !== SELF_BRAND_ID ? form.brandSelectionId : null,
       task_type: form.taskType,
       description: form.description.trim() || null,
       expected_outputs: form.expectedOutputs.trim() || null,
@@ -336,6 +344,16 @@ export function TasksPage() {
                 <input value={form.title} onChange={(event) => updateForm('title', event.target.value)} placeholder="Example: Diwali reel for main handle" />
               </label>
 
+              {isAgency ? (
+                <BrandDnaSelect
+                  label="Task for"
+                  selfLabel={organization?.name ?? 'Agency brand'}
+                  clients={clients}
+                  value={form.brandSelectionId}
+                  onChange={(id) => updateForm('brandSelectionId', id)}
+                />
+              ) : null}
+
               <label className="draft-body-field">
                 <span>Description</span>
                 <textarea value={form.description} onChange={(event) => updateForm('description', event.target.value)} rows={3} placeholder="Optional context or brief" />
@@ -423,6 +441,7 @@ export function TasksPage() {
                       <strong>{task.title}</strong>
                       <div className="saved-content-row__meta">
                         <span>{taskTypeLabel(task.task_type)}</span>
+                        {isAgency ? <span>{task.client_business_dna_id ? clientNameById.get(task.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
                         <span>{statusLabel(task.status)}</span>
                         {checklist.length > 0 ? <span>{doneCount}/{checklist.length} done</span> : null}
                         {task.due_at ? <span>Due {formatDate(task.due_at)}</span> : null}

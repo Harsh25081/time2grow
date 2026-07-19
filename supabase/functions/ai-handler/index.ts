@@ -259,7 +259,8 @@ async function generateContent({ supabase, orgId, payload }: ActionContext) {
   const audience = limitedString(payload.audience, 300);
   const keywords = limitedString(payload.keywords, 300);
   const previousCreativeDirection = limitedString(payload.previousCreativeDirection, 80);
-  const businessDna = await loadBusinessDna(supabase, orgId);
+  const clientBusinessDnaId = uuidString(payload.clientBusinessDnaId);
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, clientBusinessDnaId);
 
   if (!businessDna) {
     throw new HttpError(400, 'Save Business DNA before generating content.');
@@ -512,7 +513,8 @@ async function generatePostVisual({ supabase, orgId, payload }: ActionContext) {
   const visualConcept = limitedString(payload.visualConcept, 400);
   const tone = limitedString(payload.tone, 120);
   const audience = limitedString(payload.audience, 300);
-  const businessDna = await loadBusinessDna(supabase, orgId);
+  const clientBusinessDnaId = uuidString(payload.clientBusinessDnaId);
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, clientBusinessDnaId);
 
   if (!businessDna) {
     throw new HttpError(400, 'Save Business DNA before creating a post visual.');
@@ -577,7 +579,8 @@ async function generatePosterConcepts({ supabase, orgId, payload }: ActionContex
   const existingHeadlines = Array.isArray(payload.existingHeadlines)
     ? payload.existingHeadlines.map((item) => limitedString(item, 120)).filter(Boolean).slice(0, 12)
     : [];
-  const businessDna = await loadBusinessDna(supabase, orgId);
+  const clientBusinessDnaId = uuidString(payload.clientBusinessDnaId);
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, clientBusinessDnaId);
 
   if (!businessDna) {
     throw new HttpError(400, 'Save Business DNA before creating poster options.');
@@ -613,7 +616,8 @@ async function generatePoster({ supabase, orgId, userId, payload }: ActionContex
   const style = limitedString(payload.style, 120) || 'premium clean marketing poster';
   const format = enumString(payload.format, ['square', 'portrait', 'landscape', 'story', 'youtube'], 'portrait');
   const quality = enumString(payload.quality, ['medium', 'high'], 'high');
-  const businessDna = await loadBusinessDna(supabase, orgId);
+  const clientBusinessDnaId = uuidString(payload.clientBusinessDnaId);
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, clientBusinessDnaId);
 
   if (!businessDna) {
     throw new HttpError(400, 'Save Business DNA before creating posters.');
@@ -628,6 +632,7 @@ async function generatePoster({ supabase, orgId, userId, payload }: ActionContex
     .from('content_items')
     .insert({
       org_id: orgId,
+      client_business_dna_id: clientBusinessDnaId || null,
       content_type: 'poster',
       title: headline,
       body: posterBodyText({ headline, subheadline, offer, callToAction }),
@@ -689,7 +694,8 @@ async function generatePosterArt({ supabase, orgId, payload }: ActionContext) {
 
   const format = enumString(payload.format, ['square', 'portrait', 'landscape', 'story', 'youtube'], 'portrait');
   const quality = enumString(payload.quality, ['medium', 'high'], 'high');
-  const businessDna = await loadBusinessDna(supabase, orgId);
+  const clientBusinessDnaId = uuidString(payload.clientBusinessDnaId);
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, clientBusinessDnaId);
 
   if (!businessDna) {
     throw new HttpError(400, 'Save Business DNA before creating posters.');
@@ -1282,6 +1288,20 @@ async function loadBusinessDna(supabase: ServiceClient, orgId: string) {
     .from('business_dna')
     .select('website_url, mission, vision, positioning, values, audience, proof_points, growth_goal, key_metric, additional_notes, brand_colors, logo_storage_bucket, logo_storage_path, logo_file_name, logo_mime_type, logo_size_bytes, logo_alt_text')
     .eq('org_id', orgId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data;
+}
+
+async function loadEffectiveBusinessDna(supabase: ServiceClient, orgId: string, clientBusinessDnaId: string) {
+  if (!clientBusinessDnaId) return loadBusinessDna(supabase, orgId);
+
+  const { data, error } = await supabase
+    .from('client_business_dna')
+    .select('website_url, mission, vision, positioning, values, audience, proof_points, growth_goal, key_metric, additional_notes, brand_colors, logo_storage_bucket, logo_storage_path, logo_file_name, logo_mime_type, logo_size_bytes, logo_alt_text')
+    .eq('org_id', orgId)
+    .eq('id', clientBusinessDnaId)
     .maybeSingle();
 
   if (error) throw error;
@@ -1981,18 +2001,16 @@ async function reviewAsset({ supabase, orgId, payload }: ActionContext) {
   const contentItemId = uuidString(payload.contentItemId);
   if (!contentItemId) throw new HttpError(400, 'Choose a saved content item to review.');
 
-  const [{ data: contentItem, error: contentError }, businessDna] = await Promise.all([
-    supabase
-      .from('content_items')
-      .select('id, org_id, content_type, title, body, media_url, metadata, status')
-      .eq('id', contentItemId)
-      .eq('org_id', orgId)
-      .maybeSingle(),
-    loadBusinessDna(supabase, orgId),
-  ]);
+  const { data: contentItem, error: contentError } = await supabase
+    .from('content_items')
+    .select('id, org_id, client_business_dna_id, content_type, title, body, media_url, metadata, status')
+    .eq('id', contentItemId)
+    .eq('org_id', orgId)
+    .maybeSingle();
 
   if (contentError) throw contentError;
   if (!contentItem) throw new HttpError(404, 'Saved content was not found in this workspace.');
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, limitedString(contentItem.client_business_dna_id, 80));
   if (!businessDna) throw new HttpError(400, 'Save Business DNA before reviewing assets.');
 
   const contentType = limitedString(contentItem.content_type, 40) || 'content';

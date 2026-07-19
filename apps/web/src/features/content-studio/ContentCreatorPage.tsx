@@ -23,6 +23,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
 import type { Database, Json } from '../../types/database';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 type ContentItemRow = Database['public']['Tables']['content_items']['Row'];
@@ -241,6 +242,11 @@ export function ContentCreatorPage() {
   const [error, setError] = useState('');
   const canWriteContent = contentWriterRoles.some((role) => role === membership?.role);
   const readOnly = Boolean(membership?.role) && !canWriteContent;
+  const isAgency = organization?.org_type === 'agency';
+  const { clients, selectedClient, selectedId: brandSelectionId, setSelectedId: setBrandSelectionId } = useBrandDna(organization?.id, isAgency);
+  const selectedBusinessDna = selectedClient ?? businessDna;
+  const clientNameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
+  const selectedBrandName = selectedClient?.name ?? organization?.name ?? 'Business DNA';
 
   useEffect(() => {
     let active = true;
@@ -339,8 +345,8 @@ export function ContentCreatorPage() {
       return;
     }
 
-    if (!businessDna) {
-      setError('Save Business DNA before generating content.');
+    if (!selectedBusinessDna) {
+      setError(isAgency && brandSelectionId !== SELF_BRAND_ID ? 'Save this client Business DNA before generating content.' : 'Save Business DNA before generating content.');
       return;
     }
 
@@ -358,6 +364,7 @@ export function ContentCreatorPage() {
         body: {
           action: 'generate_content',
           orgId: organization.id,
+          clientBusinessDnaId: selectedClient?.id ?? null,
           contentType: form.mode,
           topic: form.topic,
           postTarget: form.postTarget,
@@ -409,6 +416,7 @@ export function ContentCreatorPage() {
         body: {
           action: 'generate_post_visual',
           orgId: organization.id,
+          clientBusinessDnaId: selectedClient?.id ?? null,
           target: postVariant.target,
           topic: form.topic,
           postBody: postVariant.body,
@@ -470,11 +478,16 @@ export function ContentCreatorPage() {
         .from('content_items')
         .insert({
           org_id: organization.id,
+          client_business_dna_id: selectedClient?.id ?? null,
           content_type: generated.kind === 'video' ? 'video' : 'post',
           title,
           body: renderContentToText(generated),
           media_url: mediaUrl,
-          metadata: buildMetadata(generated, visual),
+          metadata: buildMetadata(generated, visual, {
+            source: selectedClient ? 'client_business_dna' : 'business_dna',
+            clientBusinessDnaId: selectedClient?.id ?? null,
+            name: selectedBrandName,
+          }),
           status: 'ready',
           created_by: user.id,
         })
@@ -497,6 +510,7 @@ export function ContentCreatorPage() {
     const restored = restoreGeneratedContent(item.metadata);
 
     setForm((current) => ({ ...current, mode: item.content_type === 'video' ? 'video' : 'post' }));
+    if (isAgency) setBrandSelectionId(item.client_business_dna_id ?? SELF_BRAND_ID);
     setVisual(null);
     setSavedMediaUrl(item.media_url ?? '');
 
@@ -626,7 +640,7 @@ export function ContentCreatorPage() {
       return;
     }
 
-    if (!businessDna) {
+    if (!businessDna && !item.client_business_dna_id) {
       setError('Save Business DNA before reviewing content.');
       return;
     }
@@ -682,8 +696,8 @@ export function ContentCreatorPage() {
           <p className="eyebrow">Create</p>
           <h2>Content Studio</h2>
         </div>
-        <span className={readOnly || !businessDna ? 'status-pill warning' : 'status-pill success'}>
-          {readOnly ? 'Read only' : businessDna ? 'DNA ready' : 'DNA needed'}
+        <span className={readOnly || !selectedBusinessDna ? 'status-pill warning' : 'status-pill success'}>
+          {readOnly ? 'Read only' : selectedBusinessDna ? `DNA ready: ${selectedBrandName}` : 'DNA needed'}
         </span>
       </header>
 
@@ -717,6 +731,16 @@ export function ContentCreatorPage() {
             {readOnly ? <p className="form-message warning">Ask an owner, admin, or editor to create and save content.</p> : null}
 
             <form className="draft-form creator-form" onSubmit={handleGenerate}>
+              {isAgency ? (
+                <BrandDnaSelect
+                  label="Content for"
+                  selfLabel={organization?.name ?? 'Agency brand'}
+                  clients={clients}
+                  value={brandSelectionId}
+                  onChange={setBrandSelectionId}
+                />
+              ) : null}
+
               <label className="draft-body-field">
                 <span>{form.mode === 'post' ? 'Post brief' : 'Script brief'}</span>
                 <textarea
@@ -811,7 +835,7 @@ export function ContentCreatorPage() {
                 <input value={form.callToAction} onChange={(event) => updateForm('callToAction', event.target.value)} placeholder="Book a call, DM us, visit site" />
               </label>
 
-              <button className="primary-action draft-body-field" type="submit" disabled={generating || !businessDna || !canWriteContent}>
+              <button className="primary-action draft-body-field" type="submit" disabled={generating || !selectedBusinessDna || !canWriteContent}>
                 {generating ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
                 <span>{generating ? 'Generating' : form.mode === 'post' ? 'Generate post' : 'Generate script'}</span>
               </button>
@@ -995,6 +1019,7 @@ export function ContentCreatorPage() {
                       <p>{item.body || 'No body text saved.'}</p>
                       <div className="saved-content-row__meta">
                         <span>{contentTypeLabel(item.content_type)}</span>
+                        {isAgency ? <span>{item.client_business_dna_id ? clientNameById.get(item.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
                         <span>{contentStatusLabel(item.status)}</span>
                         <ViralityChip score={itemViralityScore(item.metadata)} />
                         <ReviewChip review={review} />
@@ -1283,8 +1308,13 @@ function draftTitle(content: GeneratedContent) {
   return content.title;
 }
 
-function buildMetadata(content: GeneratedContent, visual: PostVisual | null): Json {
+function buildMetadata(
+  content: GeneratedContent,
+  visual: PostVisual | null,
+  brand: { source: 'business_dna' | 'client_business_dna'; clientBusinessDnaId: string | null; name: string },
+): Json {
   const base = { ...content } as unknown as Record<string, Json>;
+  base.brand = brand as unknown as Json;
   if (visual) base.visual = { imagePrompt: visual.imagePrompt, format: visual.format };
   return base as Json;
 }

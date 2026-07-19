@@ -11,6 +11,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthProvider';
 import type { Database } from '../../types/database';
+import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 import {
   channels,
   edgeFunctionErrorMessage,
@@ -88,9 +89,12 @@ export function SocialHubPage() {
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [selectedContentItemId, setSelectedContentItemId] = useState('');
+  const [brandSelectionId, setBrandSelectionId] = useState(SELF_BRAND_ID);
   const [queueMessage, setQueueMessage] = useState('');
   const [queueError, setQueueError] = useState('');
   const [queueing, setQueueing] = useState(false);
+  const isAgency = organization?.org_type === 'agency';
+  const { clients } = useBrandDna(organization?.id, isAgency);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -230,6 +234,7 @@ export function SocialHubPage() {
     if (!contentItem) return;
 
     setSelectedCampaignId(contentItem.campaign_id ?? '');
+    setBrandSelectionId(contentItem.client_business_dna_id ?? SELF_BRAND_ID);
     setDraft((current) => ({
       ...current,
       title: contentItem.title,
@@ -243,6 +248,7 @@ export function SocialHubPage() {
     setSelectedCampaignId(campaignId);
     const campaign = campaigns.find((item) => item.id === campaignId);
     if (!campaign || selectedContentItemId) return;
+    setBrandSelectionId(campaign.client_business_dna_id ?? SELF_BRAND_ID);
 
     setDraft((current) => ({
       ...current,
@@ -254,6 +260,7 @@ export function SocialHubPage() {
   function clearSource() {
     setSelectedCampaignId('');
     setSelectedContentItemId('');
+    setBrandSelectionId(SELF_BRAND_ID);
   }
 
   async function handleQueueSelected() {
@@ -302,6 +309,7 @@ export function SocialHubPage() {
           content_type: 'post' as const,
           campaign_id: sourceCampaignId,
           content_item_id: sourceContentItemId,
+          client_business_dna_id: isAgency && brandSelectionId !== SELF_BRAND_ID ? brandSelectionId : null,
           scheduled_at: scheduledAt?.toISOString() ?? null,
           status: 'queued' as const,
           created_by: user.id,
@@ -322,6 +330,7 @@ export function SocialHubPage() {
             body: body || null,
             media_url: mediaUrl || null,
             content_type: 'post' as const,
+            client_business_dna_id: isAgency && brandSelectionId !== SELF_BRAND_ID ? brandSelectionId : null,
             scheduled_at: scheduledAt?.toISOString() ?? null,
             status: 'queued' as const,
             created_by: user.id,
@@ -467,6 +476,15 @@ export function SocialHubPage() {
               {contentItems.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
             </select>
           </label>
+          {isAgency ? (
+            <BrandDnaSelect
+              label="Publish for"
+              selfLabel={organization?.name ?? 'Agency brand'}
+              clients={clients}
+              value={brandSelectionId}
+              onChange={setBrandSelectionId}
+            />
+          ) : null}
           <button type="button" onClick={clearSource}>Clear source</button>
         </div>
       </section>

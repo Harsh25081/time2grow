@@ -80,6 +80,7 @@ export function useBrandDna(orgId: string | undefined, isAgency: boolean) {
 
 type BrandDnaSelectProps = {
   selfLabel: string;
+  label?: string;
   clients: ClientBusinessDnaRow[];
   value: string;
   onChange: (id: string) => void;
@@ -88,10 +89,10 @@ type BrandDnaSelectProps = {
 
 // Dropdown to pick which brand DNA to use: the org's own or a client. Render
 // this only in agency mode; single-workspace callers just use the self DNA.
-export function BrandDnaSelect({ selfLabel, clients, value, onChange, disabled }: BrandDnaSelectProps) {
+export function BrandDnaSelect({ selfLabel, label = 'Brand', clients, value, onChange, disabled }: BrandDnaSelectProps) {
   return (
     <label className="poster-field">
-      <span>Poster for</span>
+      <span>{label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled}>
         <option value={SELF_BRAND_ID}>{selfLabel}</option>
         {clients.map((client) => (

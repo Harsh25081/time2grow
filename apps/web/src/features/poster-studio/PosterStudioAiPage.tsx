@@ -344,6 +344,7 @@ export function PosterStudioAiPage() {
         brandName,
         palette,
         businessDna: selectedDna,
+        clientBusinessDnaId: selectedClient?.id ?? null,
         logoSource: selectedClient ? 'client_dna' : logoUrl ? 'business_dna' : 'wordmark',
         logoUrl,
         productMarketingMode: Boolean(productImage),
@@ -530,10 +531,18 @@ export function PosterStudioAiPage() {
       .from('content_items')
       .insert({
         org_id: organization.id,
+        client_business_dna_id: selectedClient?.id ?? null,
         content_type: 'poster',
         title,
         body,
         media_url: signed?.signedUrl ?? null,
+        metadata: {
+          brand: {
+            source: selectedClient ? 'client_business_dna' : 'business_dna',
+            clientBusinessDnaId: selectedClient?.id ?? null,
+            name: brandName,
+          },
+        },
         status: 'ready',
         created_by: user.id,
       });
@@ -640,6 +649,7 @@ export function PosterStudioAiPage() {
             <div className="poster-panel-head"><h3>Brief</h3><Wand2 size={18} /></div>
             {isAgency ? (
               <BrandDnaSelect
+                label="Poster for"
                 selfLabel={'Our brand' + (selfBrandName ? ' (' + selfBrandName + ')' : '')}
                 clients={clients}
                 value={brandSelectionId}
@@ -906,6 +916,7 @@ async function requestAiPoster(params: {
   brandName: string;
   palette: PosterPalette;
   businessDna: BusinessDnaRow | ClientBusinessDnaRow | null;
+  clientBusinessDnaId: string | null;
   logoSource?: string;
   logoUrl: string;
   productMarketingMode: boolean;
@@ -924,7 +935,7 @@ async function requestAiPoster(params: {
   if (supabaseClient && params.orgId) {
     const results = await Promise.all(Array.from({ length: params.posterCount }, async (_, index) => {
       const { data, error } = await supabaseClient.functions.invoke('ai-handler', {
-        body: { action: 'generate_poster_art', orgId: params.orgId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high', variantIndex: index, variantCount: params.posterCount },
+        body: { action: 'generate_poster_art', orgId: params.orgId, clientBusinessDnaId: params.clientBusinessDnaId, brief: params.brief, format: params.format, language: params.language, offerType: params.offerType, callToAction: params.callToAction, quality: 'high', variantIndex: index, variantCount: params.posterCount },
       });
       return error || !data ? null : data as PosterAgentPayload;
     }));
@@ -962,6 +973,7 @@ async function requestPythonPosterAgent(params: {
   brandName: string;
   palette: PosterPalette;
   businessDna: BusinessDnaRow | ClientBusinessDnaRow | null;
+  clientBusinessDnaId: string | null;
   logoSource?: string;
   logoUrl: string;
   productMarketingMode: boolean;
@@ -991,6 +1003,7 @@ async function requestPythonPosterAgent(params: {
         action: 'poster_set',
         orgId: params.orgId,
         userId: params.userId,
+        clientBusinessDnaId: params.clientBusinessDnaId,
         // Raw request text, unmodified - Python performs the planning and render.
         userIdea: params.brief,
         rawBrief: params.brief,
