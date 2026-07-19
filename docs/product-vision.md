@@ -79,7 +79,7 @@ publish_targets, social_media_assets, integration/oauth tables, ai_usage_log.
 | 1 AI Proof Verification | Poster QA lives only inside generation prompts | No post-hoc verification of a saved asset |
 | 2 SOP Tasks | none — `campaigns` groups content, not tasks | Tasks table + UI |
 | 3 Recurring Ops | `social_posts.scheduled_at` is one-shot | No recurrence engine |
-| 4 AI Review Layer | `business_dna` holds brand colors + logo; `ai-handler` is an extensible action registry | No `review_asset` action |
+| 4 AI Review Layer | `review_asset` v1 checks saved content/posters against Business DNA and stores the result in `content_items.metadata.review` | Needs review history, task attachment, and richer image/dimension evidence |
 | 5 Executive Dashboard | placeholder stat tiles | Real metrics, dependent on 2-4 producing data |
 
 ## Roadmap
@@ -92,10 +92,11 @@ The five pillars are one connected system, and **SOP Tasks (pillar 2) is the spi
   guidelines, attachments, expected outputs, status incl. `in_review`/`approved`, recurrence,
   assignee, due date) plus a Tasks page to create, run, and approve tasks. Deliberately seeds
   pillars 2, 3, and 5.
-- **Phase 2 — AI Review Layer.** A `review_asset` action in `ai-handler` that checks a saved asset
-  against Business DNA (brand colors, logo, dimensions, spelling, CTA, completeness) and stores a
-  structured result plus a quality score in `content_items.metadata` or on the task. Includes the
-  content virality/quality self-score.
+- **Phase 2 — AI Review Layer.** `review_asset` v1 exists in `ai-handler`: it checks a saved asset
+  against Business DNA (brand fit, audience fit, CTA clarity, spelling/readability, claim safety,
+  completeness, and visual readiness when an image is available) and stores a structured result plus
+  quality score in `content_items.metadata.review`. The next upgrade is review history and task
+  attachment.
 - **Phase 3 — Recurring Operations.** An engine that materializes tasks from `recurrence` on a
   schedule (daily/weekly/monthly), so recurring ops appear as real work items.
 - **Phase 4 — Executive Dashboard.** Replace the placeholder Home tiles with real aggregates over

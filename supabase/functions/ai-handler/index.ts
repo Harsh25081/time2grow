@@ -71,6 +71,21 @@ type PosterFormat = 'square' | 'portrait' | 'landscape' | 'story' | 'youtube';
 type PosterQuality = 'medium' | 'high';
 type PosterTemplateId = 'signature' | 'spotlight' | 'premium' | 'editorial' | 'bold' | 'educational';
 type PosterConcept = { angle: string; objective: string; reason: string; headline: string; subheadline: string; offer: string; callToAction: string; template: PosterTemplateId };
+type ReviewStatus = 'approved' | 'needs_work' | 'blocked';
+type ReviewCheckStatus = 'pass' | 'warn' | 'fail';
+type ReviewResult = {
+  score: number;
+  verdict: ReviewStatus;
+  summary: string;
+  checkedAt: string;
+  checks: Array<{ name: string; score: number; status: ReviewCheckStatus; note: string }>;
+  fixes: string[];
+  evidence: {
+    contentType: string;
+    visualReviewed: boolean;
+    businessDnaUsed: boolean;
+  };
+};
 
 const DEFAULT_DAILY_ORG_CALL_CAP = 40;
 const DEFAULT_MAX_WEBSITE_BYTES = 512_000;
@@ -117,6 +132,7 @@ const actions: Record<string, ActionHandler> = {
   generate_poster_concepts: generatePosterConcepts,
   generate_poster: generatePoster,
   generate_poster_art: generatePosterArt,
+  review_asset: reviewAsset,
 };
 
 Deno.serve(async (req) => {
@@ -829,11 +845,51 @@ function providerConfig(provider: ModelProvider, purpose: ModelPurpose) {
   };
 }
 
-function callOpenAi(messages: Array<{ role: string; content: string }>, maxTokens = 900) {
+type ChatMessage = { role: string; content: unknown };
+
+function callOpenAi(messages: ChatMessage[], maxTokens = 900) {
   return callModel(messages, maxTokens, 'generation');
 }
 
-async function callModel(messages: Array<{ role: string; content: string }>, maxTokens = 900, purpose: ModelPurpose = 'generation') {
+async function callOpenAiVision(messages: ChatMessage[], maxTokens = 900) {
+  const apiKey = requiredEnv('OPENAI_API_KEY');
+  const model = Deno.env.get('OPENAI_MODEL_REVIEW') || Deno.env.get('OPENAI_MODEL_VISUAL') || Deno.env.get('OPENAI_MODEL') || 'gpt-4o-mini';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), scoringTimeoutMs());
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    signal: controller.signal,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.2,
+      max_tokens: maxTokens,
+      response_format: { type: 'json_object' },
+    }),
+  }).catch((error) => {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new HttpError(504, 'The AI review timed out. Try again.');
+    }
+    throw new HttpError(502, 'The AI review service did not respond.');
+  }).finally(() => clearTimeout(timeout));
+
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = typeof body?.error?.message === 'string' ? body.error.message : 'The AI review service did not respond.';
+    throw new HttpError(502, message);
+  }
+
+  const content = body?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string') throw new HttpError(502, 'The AI review service returned an unexpected response.');
+  return content;
+}
+
+async function callModel(messages: ChatMessage[], maxTokens = 900, purpose: ModelPurpose = 'generation') {
   const provider = providerForPurpose(purpose);
   const { apiKey, endpoint, model } = providerConfig(provider, purpose);
   const controller = new AbortController();
@@ -1274,6 +1330,29 @@ function enumString<T extends string>(value: unknown, allowed: T[], fallback: T)
 
 function limitedString(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : '';
+}
+
+function uuidString(value: unknown) {
+  const candidate = limitedString(value, 80);
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)
+    ? candidate
+    : '';
+}
+
+function safeRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function isPublicImageUrl(value: string) {
+  if (!value || value.length > 2000) return false;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    assertPublicWebsiteUrl(parsed);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function parseDnaCompletion(raw: string, fallbackColors: ColorEntry[]) {
   let parsed: Record<string, unknown>;
@@ -1896,4 +1975,171 @@ function numberEnv(name: string, fallback: number, min: number, max: number) {
   const value = raw ? Number(raw) : fallback;
   if (!Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+async function reviewAsset({ supabase, orgId, payload }: ActionContext) {
+  const contentItemId = uuidString(payload.contentItemId);
+  if (!contentItemId) throw new HttpError(400, 'Choose a saved content item to review.');
+
+  const [{ data: contentItem, error: contentError }, businessDna] = await Promise.all([
+    supabase
+      .from('content_items')
+      .select('id, org_id, content_type, title, body, media_url, metadata, status')
+      .eq('id', contentItemId)
+      .eq('org_id', orgId)
+      .maybeSingle(),
+    loadBusinessDna(supabase, orgId),
+  ]);
+
+  if (contentError) throw contentError;
+  if (!contentItem) throw new HttpError(404, 'Saved content was not found in this workspace.');
+  if (!businessDna) throw new HttpError(400, 'Save Business DNA before reviewing assets.');
+
+  const contentType = limitedString(contentItem.content_type, 40) || 'content';
+  const mediaUrl = limitedString(contentItem.media_url, 2000);
+  const metadata = safeRecord(contentItem.metadata);
+  const visualReviewed = isPublicImageUrl(mediaUrl);
+  const completion = visualReviewed
+    ? await callOpenAiVision(reviewAssetMessages(contentItem, businessDna, metadata, mediaUrl), 1000)
+    : await callOpenAi(reviewAssetMessages(contentItem, businessDna, metadata, ''), 1000);
+
+  const review = parseReviewCompletion(completion, {
+    contentType,
+    visualReviewed,
+    businessDnaUsed: true,
+  });
+  const nextMetadata = { ...metadata, review };
+
+  const { data: updated, error: updateError } = await supabase
+    .from('content_items')
+    .update({ metadata: nextMetadata })
+    .eq('id', contentItemId)
+    .eq('org_id', orgId)
+    .select('id, metadata, status, updated_at')
+    .single();
+
+  if (updateError || !updated) throw updateError ?? new HttpError(500, 'Could not save the review result.');
+
+  return { review, contentItem: updated };
+}
+
+function reviewAssetMessages(
+  contentItem: Record<string, unknown>,
+  businessDna: Record<string, unknown>,
+  metadata: Record<string, unknown>,
+  mediaUrl: string,
+) {
+  const system = [
+    'You are the AI Review Layer for time2grow. Review a saved marketing deliverable against the workspace Business DNA.',
+    'Reply with strict JSON only, no prose, matching this exact shape: {"score":number,"verdict":"approved|needs_work|blocked","summary":string,"checks":[{"name":string,"score":number,"status":"pass|warn|fail","note":string}],"fixes":[string]}.',
+    'Grade only what is present. Never invent unseen proof, discounts, phone numbers, awards, analytics, or provider approvals.',
+    'Use practical marketing QA checks: brand fit, audience fit, CTA clarity, spelling/readability, claim safety, completeness, and visual readiness when an image is supplied.',
+    'If no image is supplied, do not claim pixel-level logo/color/layout verification; mark visual readiness as warn unless the text metadata is enough.',
+    'Use 0-100 score. approved requires score >= 80 and no fail checks. needs_work means fixable issues. blocked means unsafe claims, missing core deliverable, or unusable output.',
+  ].join(' ');
+
+  const userPayload = {
+    contentItem: {
+      id: limitedString(contentItem.id, 80),
+      contentType: limitedString(contentItem.content_type, 40),
+      title: limitedString(contentItem.title, 240),
+      body: limitedString(contentItem.body, 4000),
+      hasImage: Boolean(mediaUrl),
+      metadata: summarizeReviewMetadata(metadata),
+    },
+    businessDna: summarizeBusinessDna(businessDna),
+  };
+
+  if (!mediaUrl) {
+    return [
+      { role: 'system', content: system },
+      { role: 'user', content: JSON.stringify(userPayload) },
+    ];
+  }
+
+  return [
+    { role: 'system', content: system },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: JSON.stringify(userPayload) },
+        { type: 'image_url', image_url: { url: mediaUrl, detail: 'low' } },
+      ],
+    },
+  ];
+}
+
+function summarizeReviewMetadata(metadata: Record<string, unknown>) {
+  return {
+    kind: limitedString(metadata.kind, 40),
+    virality: metadata.virality && typeof metadata.virality === 'object' && !Array.isArray(metadata.virality)
+      ? {
+          score: clampScore((metadata.virality as Record<string, unknown>).score),
+          summary: limitedString((metadata.virality as Record<string, unknown>).summary, 300),
+        }
+      : null,
+    visual: metadata.visual && typeof metadata.visual === 'object' && !Array.isArray(metadata.visual)
+      ? {
+          format: limitedString((metadata.visual as Record<string, unknown>).format, 80),
+          imagePrompt: limitedString((metadata.visual as Record<string, unknown>).imagePrompt, 800),
+        }
+      : null,
+  };
+}
+
+function parseReviewCompletion(raw: string, evidence: ReviewResult['evidence']): ReviewResult {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The AI review response could not be read. Try again.');
+  }
+
+  const checks = Array.isArray(parsed.checks)
+    ? parsed.checks
+        .map((check) => normalizeReviewCheck(check))
+        .filter((check): check is ReviewResult['checks'][number] => Boolean(check))
+        .slice(0, 8)
+    : [];
+  if (checks.length === 0) throw new HttpError(502, 'The AI review did not return usable checks.');
+
+  const fixes = Array.isArray(parsed.fixes)
+    ? parsed.fixes.map((fix) => limitedString(fix, 180)).filter(Boolean).slice(0, 6)
+    : [];
+  const score = clampScore(parsed.score);
+  const hasFail = checks.some((check) => check.status === 'fail');
+  const rawVerdict = enumString<ReviewStatus>(parsed.verdict, ['approved', 'needs_work', 'blocked'], score >= 80 && !hasFail ? 'approved' : 'needs_work');
+  const verdict: ReviewStatus = hasFail && rawVerdict === 'approved' ? 'needs_work' : rawVerdict;
+
+  return {
+    score,
+    verdict,
+    summary: limitedString(parsed.summary, 500) || verdictLabel(verdict),
+    checkedAt: new Date().toISOString(),
+    checks,
+    fixes,
+    evidence,
+  };
+}
+
+function normalizeReviewCheck(value: unknown) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const name = limitedString(record.name, 80);
+  if (!name) return null;
+  const status = enumString<ReviewCheckStatus>(record.status, ['pass', 'warn', 'fail'], clampScore(record.score) >= 80 ? 'pass' : 'warn');
+  return {
+    name,
+    score: clampScore(record.score),
+    status,
+    note: limitedString(record.note, 260),
+  };
+}
+
+function verdictLabel(verdict: ReviewStatus) {
+  return {
+    approved: 'Looks ready to use.',
+    needs_work: 'Needs a few improvements before publishing.',
+    blocked: 'Do not publish until the flagged issues are fixed.',
+  }[verdict];
 }

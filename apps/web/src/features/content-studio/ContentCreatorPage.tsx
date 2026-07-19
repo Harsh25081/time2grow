@@ -12,6 +12,7 @@ import {
   RotateCcw,
   Save,
   Send,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Video,
@@ -65,6 +66,22 @@ type ViralityScore = {
   revisions: number;
   passed: boolean;
   threshold: number;
+};
+
+type ReviewStatus = 'approved' | 'needs_work' | 'blocked';
+type ReviewCheckStatus = 'pass' | 'warn' | 'fail';
+type ReviewResult = {
+  score: number;
+  verdict: ReviewStatus;
+  summary: string;
+  checkedAt: string;
+  checks: Array<{ name: string; score: number; status: ReviewCheckStatus; note: string }>;
+  fixes: string[];
+  evidence: {
+    contentType: string;
+    visualReviewed: boolean;
+    businessDnaUsed: boolean;
+  };
 };
 
 type PostSource = { url: string };
@@ -219,6 +236,7 @@ export function ContentCreatorPage() {
   const [generatingVisual, setGeneratingVisual] = useState(false);
   const [saving, setSaving] = useState(false);
   const [updatingItemId, setUpdatingItemId] = useState('');
+  const [reviewingItemId, setReviewingItemId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const canWriteContent = contentWriterRoles.some((role) => role === membership?.role);
@@ -244,7 +262,7 @@ export function ContentCreatorPage() {
           .from('content_items')
           .select('*')
           .eq('org_id', organization.id)
-          .in('content_type', ['post', 'video'])
+          .in('content_type', ['post', 'video', 'poster'])
           .order('created_at', { ascending: false })
           .order('id', { ascending: false })
           .limit(24),
@@ -600,6 +618,49 @@ export function ContentCreatorPage() {
     }
   }
 
+  async function handleReviewItem(item: ContentItemRow) {
+    if (!supabase || !organization?.id) return;
+
+    if (!canWriteContent) {
+      setError('Ask an owner, admin, or editor to review content here.');
+      return;
+    }
+
+    if (!businessDna) {
+      setError('Save Business DNA before reviewing content.');
+      return;
+    }
+
+    setReviewingItemId(item.id);
+    setMessage('');
+    setError('');
+
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('ai-handler', {
+        body: {
+          action: 'review_asset',
+          orgId: organization.id,
+          contentItemId: item.id,
+        },
+      });
+
+      if (invokeError) throw new Error(await edgeFunctionErrorMessage(invokeError, 'ai-handler'));
+
+      const review = normalizeReview(data?.review);
+      if (!review) throw new Error('AI did not return a usable review.');
+
+      const nextMetadata = normalizeMetadata(data?.contentItem?.metadata) ?? withReviewMetadata(item.metadata, review);
+      setContentItems((current) => current.map((contentItem) => (
+        contentItem.id === item.id ? { ...contentItem, metadata: nextMetadata } : contentItem
+      )));
+      setMessage(`Review complete: ${review.score}/100.`);
+    } catch (reviewError) {
+      setError(errorMessage(reviewError, 'Could not review this content.'));
+    } finally {
+      setReviewingItemId('');
+    }
+  }
+
   async function handleCopy() {
     if (!generated) return;
     await navigator.clipboard?.writeText(renderContentToText(generated)).catch(() => null);
@@ -862,7 +923,7 @@ export function ContentCreatorPage() {
             <div className="section-heading content-library-heading">
               <div>
                 <p className="eyebrow">Library</p>
-                <h3>Saved posts and scripts</h3>
+                <h3>Saved content</h3>
               </div>
               <div className="content-library-actions">
                 <div className="library-filter-tabs" aria-label="Filter saved content">
@@ -925,44 +986,53 @@ export function ContentCreatorPage() {
             ) : null}
 
             <div className="saved-content-list">
-              {visibleContentItems.length > 0 ? visibleContentItems.map((item) => (
-                <article className={`saved-content-row ${item.status === 'archived' ? 'is-archived' : ''}`} key={item.id}>
-                  <div className="saved-content-row__main">
-                    <strong>{item.title}</strong>
-                    <p>{item.body || 'No body text saved.'}</p>
-                    <div className="saved-content-row__meta">
-                      <span>{item.content_type === 'video' ? 'Video script' : 'Post'}</span>
-                      <span>{contentStatusLabel(item.status)}</span>
-                      <ViralityChip score={itemViralityScore(item.metadata)} />
+              {visibleContentItems.length > 0 ? visibleContentItems.map((item) => {
+                const review = itemReview(item.metadata);
+                return (
+                  <article className={`saved-content-row ${item.status === 'archived' ? 'is-archived' : ''}`} key={item.id}>
+                    <div className="saved-content-row__main">
+                      <strong>{item.title}</strong>
+                      <p>{item.body || 'No body text saved.'}</p>
+                      <div className="saved-content-row__meta">
+                        <span>{contentTypeLabel(item.content_type)}</span>
+                        <span>{contentStatusLabel(item.status)}</span>
+                        <ViralityChip score={itemViralityScore(item.metadata)} />
+                        <ReviewChip review={review} />
+                      </div>
+                      <ReviewSummary review={review} />
                     </div>
-                  </div>
-                  <div className="saved-content-row__side">
-                    <small>{formatDate(item.created_at)}</small>
-                    <div className="saved-content-row__actions">
-                      <button type="button" className="icon-text-button" onClick={() => loadSavedItem(item)}>
-                        <CheckCircle2 size={16} />
-                        <span>Preview</span>
-                      </button>
-                      <button type="button" className="icon-text-button" onClick={() => copyItemBody(item)}>
-                        <Copy size={16} />
-                        <span>Copy</span>
-                      </button>
-                      {canWriteContent ? (
-                        <>
-                          <button type="button" className="icon-text-button" onClick={() => startEditingItem(item)}>
-                            <Pencil size={16} />
-                            <span>Edit</span>
-                          </button>
-                          <button type="button" className="icon-text-button" disabled={updatingItemId === item.id} onClick={() => handleArchiveToggle(item)}>
-                            {updatingItemId === item.id ? <Loader2 className="spin" size={16} /> : item.status === 'archived' ? <RotateCcw size={16} /> : <Archive size={16} />}
-                            <span>{item.status === 'archived' ? 'Restore' : 'Archive'}</span>
-                          </button>
-                        </>
-                      ) : null}
+                    <div className="saved-content-row__side">
+                      <small>{formatDate(item.created_at)}</small>
+                      <div className="saved-content-row__actions">
+                        <button type="button" className="icon-text-button" onClick={() => loadSavedItem(item)}>
+                          <CheckCircle2 size={16} />
+                          <span>Preview</span>
+                        </button>
+                        <button type="button" className="icon-text-button" onClick={() => copyItemBody(item)}>
+                          <Copy size={16} />
+                          <span>Copy</span>
+                        </button>
+                        {canWriteContent ? (
+                          <>
+                            <button type="button" className="icon-text-button" disabled={reviewingItemId === item.id || updatingItemId === item.id} onClick={() => handleReviewItem(item)}>
+                              {reviewingItemId === item.id ? <Loader2 className="spin" size={16} /> : <ShieldCheck size={16} />}
+                              <span>{reviewingItemId === item.id ? 'Reviewing' : review ? 'Review again' : 'Review'}</span>
+                            </button>
+                            <button type="button" className="icon-text-button" onClick={() => startEditingItem(item)}>
+                              <Pencil size={16} />
+                              <span>Edit</span>
+                            </button>
+                            <button type="button" className="icon-text-button" disabled={updatingItemId === item.id} onClick={() => handleArchiveToggle(item)}>
+                              {updatingItemId === item.id ? <Loader2 className="spin" size={16} /> : item.status === 'archived' ? <RotateCcw size={16} /> : <Archive size={16} />}
+                              <span>{item.status === 'archived' ? 'Restore' : 'Archive'}</span>
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </article>
-              )) : (
+                  </article>
+                );
+              }) : (
                 <div className="queue-empty">
                   <Sparkles size={20} />
                   <span>{contentItems.length > 0 ? 'No saved items match this filter.' : 'No saved drafts yet.'}</span>
@@ -1019,6 +1089,28 @@ function ViralityChip({ score }: { score: number | null }) {
   return <span className={`virality-chip ${score >= VIRALITY_THRESHOLD ? 'is-strong' : 'is-weak'}`}>Virality {score}</span>;
 }
 
+function ReviewChip({ review }: { review: ReviewResult | null }) {
+  if (!review) return null;
+  const strong = review.verdict === 'approved' && review.score >= 80;
+  return <span className={`review-chip ${strong ? 'is-strong' : review.verdict === 'blocked' ? 'is-blocked' : 'is-weak'}`}>Review {review.score}</span>;
+}
+
+function ReviewSummary({ review }: { review: ReviewResult | null }) {
+  if (!review) return null;
+  const topFix = review.fixes[0] || review.checks.find((check) => check.status !== 'pass')?.note || '';
+  return (
+    <div className={`review-summary review-summary--${review.verdict}`}>
+      <div>
+        <ShieldCheck size={16} />
+        <strong>{reviewVerdictLabel(review.verdict)}</strong>
+        <span>{review.summary}</span>
+      </div>
+      {topFix ? <p>{topFix}</p> : null}
+      <small>{review.evidence.visualReviewed ? 'Image reviewed' : 'Text review only'} · {formatDate(review.checkedAt)}</small>
+    </div>
+  );
+}
+
 function itemViralityScore(metadata: Json | null): number | null {
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
   const virality = (metadata as Record<string, unknown>).virality;
@@ -1026,6 +1118,83 @@ function itemViralityScore(metadata: Json | null): number | null {
   const score = (virality as Record<string, unknown>).score;
   if (typeof score !== 'number' || !Number.isFinite(score)) return null;
   return Math.min(100, Math.max(0, Math.round(score)));
+}
+
+function itemReview(metadata: Json | null): ReviewResult | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return null;
+  return normalizeReview((metadata as Record<string, unknown>).review);
+}
+
+function normalizeReview(value: unknown): ReviewResult | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const verdict = stringChoice<ReviewStatus>(record.verdict, ['approved', 'needs_work', 'blocked']);
+  const evidence = record.evidence && typeof record.evidence === 'object' && !Array.isArray(record.evidence)
+    ? record.evidence as Record<string, unknown>
+    : {};
+  const checks = Array.isArray(record.checks)
+    ? record.checks
+        .map((check) => {
+          if (!check || typeof check !== 'object' || Array.isArray(check)) return null;
+          const checkRecord = check as Record<string, unknown>;
+          const status = stringChoice<ReviewCheckStatus>(checkRecord.status, ['pass', 'warn', 'fail']);
+          const name = stringValue(checkRecord.name).slice(0, 80);
+          if (!name || !status) return null;
+          return {
+            name,
+            score: clampScore(checkRecord.score),
+            status,
+            note: stringValue(checkRecord.note).slice(0, 260),
+          };
+        })
+        .filter((check): check is ReviewResult['checks'][number] => Boolean(check))
+    : [];
+
+  if (!verdict || checks.length === 0) return null;
+  return {
+    score: clampScore(record.score),
+    verdict,
+    summary: stringValue(record.summary).slice(0, 500),
+    checkedAt: stringValue(record.checkedAt) || new Date().toISOString(),
+    checks,
+    fixes: Array.isArray(record.fixes) ? record.fixes.map((fix) => stringValue(fix).slice(0, 180)).filter(Boolean).slice(0, 6) : [],
+    evidence: {
+      contentType: stringValue(evidence.contentType).slice(0, 40),
+      visualReviewed: evidence.visualReviewed === true,
+      businessDnaUsed: evidence.businessDnaUsed === true,
+    },
+  };
+}
+
+function normalizeMetadata(value: unknown): Json | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Json : null;
+}
+
+function withReviewMetadata(metadata: Json | null, review: ReviewResult): Json {
+  return {
+    ...(metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata as Record<string, Json | undefined> : {}),
+    review: review as unknown as Json,
+  };
+}
+
+function contentTypeLabel(value: ContentItemRow['content_type']) {
+  return {
+    post: 'Post',
+    video: 'Video script',
+    poster: 'Poster',
+  }[value];
+}
+
+function reviewVerdictLabel(value: ReviewStatus) {
+  return {
+    approved: 'Approved',
+    needs_work: 'Needs work',
+    blocked: 'Blocked',
+  }[value];
+}
+
+function stringChoice<T extends string>(value: unknown, allowed: T[]) {
+  return typeof value === 'string' && allowed.includes(value as T) ? value as T : null;
 }
 
 function ScriptView({ script }: { script: GeneratedScript }) {

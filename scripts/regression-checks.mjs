@@ -100,6 +100,16 @@ requirePattern(
   /await reserveAiUsage[\s\S]*const result = await handler/,
 );
 requirePattern(
+  'AI review action stores structured review metadata',
+  'supabase/functions/ai-handler/index.ts',
+  /review_asset: reviewAsset[\s\S]*from\('content_items'\)[\s\S]*metadata: nextMetadata[\s\S]*parseReviewCompletion/,
+);
+requirePattern(
+  'Content Studio exposes role-aware asset review',
+  'apps/web/src/features/content-studio/ContentCreatorPage.tsx',
+  /handleReviewItem[\s\S]*action: 'review_asset'[\s\S]*canWriteContent[\s\S]*ReviewChip/,
+);
+requirePattern(
   'admins cannot assign or modify owner memberships',
   'supabase/migrations/20260719152000_critical_security_hardening.sql',
   /memberships_insert_creator_or_managers[\s\S]*has_org_role\(org_id, array\['admin'\]\)[\s\S]*role <> 'owner'[\s\S]*memberships_update_owner_or_admin_non_owner/,
