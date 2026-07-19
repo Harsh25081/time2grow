@@ -458,7 +458,7 @@ export type Database = {
           org_id: string;
           social_post_id: string;
           distribution_handle_id: string | null;
-          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
           target_label: string;
           status: 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
           external_post_id: string | null;
@@ -475,7 +475,7 @@ export type Database = {
           org_id: string;
           social_post_id: string;
           distribution_handle_id?: string | null;
-          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
           target_label: string;
           status?: 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
           external_post_id?: string | null;
@@ -545,8 +545,8 @@ export type Database = {
           id: string;
           org_id: string;
           integration_account_id: string | null;
-          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
-          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
+          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel' | 'shopify_store';
           display_name: string;
           external_handle_id: string | null;
           is_enabled: boolean;
@@ -560,8 +560,8 @@ export type Database = {
           id?: string;
           org_id: string;
           integration_account_id?: string | null;
-          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
-          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
+          handle_type: 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel' | 'shopify_store';
           display_name: string;
           external_handle_id?: string | null;
           is_enabled?: boolean;

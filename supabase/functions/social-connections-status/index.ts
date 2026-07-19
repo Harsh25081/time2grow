@@ -7,9 +7,9 @@ import {
   serviceClient,
 } from '../_shared/youtube.ts';
 
-type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
 
-const providers: Provider[] = ['facebook', 'instagram', 'linkedin', 'youtube', 'google_ads', 'whatsapp', 'slack', 'telegram'];
+const providers: Provider[] = ['facebook', 'instagram', 'linkedin', 'youtube', 'google_ads', 'whatsapp', 'slack', 'telegram', 'shopify'];
 
 const providerConfig: Record<Provider, {
   authMode: 'oauth' | 'server_token' | 'ads_setup';
@@ -24,6 +24,7 @@ const providerConfig: Record<Provider, {
   whatsapp: { authMode: 'server_token', requiredSecrets: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID'], connectable: false },
   slack: { authMode: 'oauth', requiredSecrets: ['SLACK_CLIENT_ID', 'SLACK_CLIENT_SECRET'], connectable: true },
   telegram: { authMode: 'server_token', requiredSecrets: ['TELEGRAM_BOT_TOKEN'], connectable: false },
+  shopify: { authMode: 'server_token', requiredSecrets: ['SHOPIFY_ADMIN_ACCESS_TOKEN', 'SHOPIFY_STORE_DOMAIN'], connectable: false },
 };
 
 Deno.serve(async (req) => {

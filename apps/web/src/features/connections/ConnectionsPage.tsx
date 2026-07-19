@@ -377,6 +377,7 @@ function providerHandlePlaceholder(provider: Provider) {
     whatsapp: 'Recipient phone number with country code',
     slack: 'Slack channel ID, e.g. C0123ABC',
     telegram: 'Telegram chat/channel ID',
+    shopify: 'Store domain, e.g. my-store.myshopify.com',
   };
   return placeholders[provider];
 }

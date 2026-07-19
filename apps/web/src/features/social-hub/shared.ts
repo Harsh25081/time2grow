@@ -1,8 +1,8 @@
-import { Megaphone, MessageCircle, PlaySquare, Send, Share2, Smartphone } from 'lucide-react';
+import { Megaphone, MessageCircle, PlaySquare, Send, Share2, ShoppingBag, Smartphone } from 'lucide-react';
 import type { Database, Json } from '../../types/database';
 
-export type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
-export type HandleType = 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel';
+export type Provider = 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'shopify';
+export type HandleType = 'facebook_page' | 'instagram_business' | 'linkedin_page' | 'youtube_channel' | 'google_ads_customer' | 'whatsapp_phone_number' | 'slack_channel' | 'telegram_channel' | 'shopify_store';
 export type HandleStatus = 'ready' | 'review' | 'needs_setup';
 export type DistributionHandleRow = Database['public']['Tables']['distribution_handles']['Row'];
 
@@ -50,6 +50,7 @@ export const providerMeta: Record<Provider, { handleType: HandleType; type: stri
   whatsapp: { handleType: 'whatsapp_phone_number', type: 'WA', detail: 'WhatsApp recipient', externalLabel: 'Recipient phone number' },
   slack: { handleType: 'slack_channel', type: 'Slack', detail: 'Slack Channel', externalLabel: 'Slack Channel ID' },
   telegram: { handleType: 'telegram_channel', type: 'TG', detail: 'Telegram Channel', externalLabel: 'Telegram Channel ID' },
+  shopify: { handleType: 'shopify_store', type: 'Shop', detail: 'Shopify Store', externalLabel: 'Store domain (my-store.myshopify.com)' },
 };
 
 export const channels: Channel[] = [
@@ -61,6 +62,7 @@ export const channels: Channel[] = [
   { provider: 'whatsapp', name: 'WhatsApp Business', status: 'Template rules apply', mode: 'Opt-in messages', accent: 'teal', icon: MessageCircle },
   { provider: 'slack', name: 'Slack Channels', status: 'Bot token required', mode: 'Workspace channels', accent: 'neutral', icon: MessageCircle },
   { provider: 'telegram', name: 'Telegram Channels', status: 'Bot token required', mode: 'Channel messages', accent: 'neutral', icon: Send },
+  { provider: 'shopify', name: 'Shopify', status: 'Admin API token required', mode: 'Store orders & revenue', accent: 'green', icon: ShoppingBag },
 ];
 
 export const seedHandles: Handle[] = [
@@ -177,7 +179,8 @@ export function isProvider(value: unknown): value is Provider {
     || value === 'google_ads'
     || value === 'whatsapp'
     || value === 'slack'
-    || value === 'telegram';
+    || value === 'telegram'
+    || value === 'shopify';
 }
 
 export function getAuthUrl(value: unknown) {
