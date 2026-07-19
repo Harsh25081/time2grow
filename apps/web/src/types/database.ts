@@ -505,6 +505,62 @@ export type Database = {
         };
         Relationships: [];
       };
+      leads: {
+        Row: {
+          id: string;
+          org_id: string;
+          client_business_dna_id: string | null;
+          campaign_id: string | null;
+          full_name: string;
+          company: string | null;
+          email: string | null;
+          phone: string | null;
+          source: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          status: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_score: number;
+          estimated_value: number | null;
+          next_follow_up_at: string | null;
+          notes: string | null;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          full_name: string;
+          company?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          status?: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_score?: number;
+          estimated_value?: number | null;
+          next_follow_up_at?: string | null;
+          notes?: string | null;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          full_name?: string;
+          company?: string | null;
+          email?: string | null;
+          phone?: string | null;
+          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          status?: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_score?: number;
+          estimated_value?: number | null;
+          next_follow_up_at?: string | null;
+          notes?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       social_posts: {
         Row: {
           id: string;

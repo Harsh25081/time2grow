@@ -32,6 +32,7 @@ const AnalyticsReportingPage = lazy(() => import('../features/analytics/Analytic
 const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
+const LeadsPage = lazy(() => import('../features/leads/LeadsPage').then((module) => ({ default: module.LeadsPage })));
 const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })));
 const SocialHubPage = lazy(() => import('../features/social-hub/SocialHubPage').then((module) => ({ default: module.SocialHubPage })));
@@ -117,8 +118,8 @@ const modules = [
   },
   {
     title: 'Lead CRM',
-    description: 'Track lead source, status, score, and follow-up timeline.',
-    status: 'Coming soon',
+    description: 'Track lead source, status, value, campaign source, and follow-up timeline.',
+    status: 'Live',
     color: 'green',
   },
 ];
@@ -224,6 +225,10 @@ export function AppShell() {
               ))}
             </div>
           </div>
+          <NavLink to="/leads" className="nav-item">
+            <Target size={19} />
+            <span>Leads</span>
+          </NavLink>
           <div className="nav-section">
             <NavLink to="/settings" className="nav-item nav-item--parent">
               <Settings size={19} />
@@ -280,7 +285,7 @@ export function AppShell() {
           <Route path="/social" element={<Navigate to="/campaigns/social" replace />} />
           <Route path="/tasks" element={<Navigate to="/campaigns/tasks" replace />} />
           <Route path="/connections" element={<Navigate to="/settings/connections" replace />} />
-          <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
+          <Route path="/leads" element={<LeadsPage />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/connections" element={<ConnectionsPage />} />

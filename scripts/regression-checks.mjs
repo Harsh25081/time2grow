@@ -165,6 +165,16 @@ requirePattern(
   /CampaignsPage[\s\S]*to: '\/campaigns'[\s\S]*path="\/campaigns"/,
 );
 requirePattern(
+  'Leads CRM is real CRUD and role-aware',
+  'apps/web/src/features/leads/LeadsPage.tsx',
+  /from\('leads'\)[\s\S]*eq\('org_id', organization\.id\)[\s\S]*canWrite[\s\S]*Create lead[\s\S]*client_business_dna_id[\s\S]*campaign_id/,
+);
+requirePattern(
+  'Leads route is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /LeadsPage[\s\S]*to="\/leads"[\s\S]*path="\/leads"/,
+);
+requirePattern(
   'Campaign work modules sit under Campaigns',
   'apps/web/src/app/AppShell.tsx',
   /campaignNav[\s\S]*\/campaigns\/content[\s\S]*\/campaigns\/posters[\s\S]*\/campaigns\/tasks[\s\S]*\/campaigns\/social[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,
