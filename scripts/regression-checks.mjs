@@ -177,12 +177,22 @@ requirePattern(
 requirePattern(
   'Analytics page is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
-  /AnalyticsPage[\s\S]*to: '\/analytics'[\s\S]*path="\/analytics"/,
+  /AnalyticsPage[\s\S]*analyticsNav[\s\S]*\/analytics\/reporting[\s\S]*path="\/analytics"[\s\S]*path="\/analytics\/reporting"/,
 );
 requirePattern(
   'Analytics page reads workflow and reporting data',
   'apps/web/src/features/analytics/AnalyticsPage.tsx',
   /from\('campaigns'\)[\s\S]*from\('content_items'\)[\s\S]*from\('marketing_tasks'\)[\s\S]*from\('social_posts'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('analytics_sources'\)/,
+);
+requirePattern(
+  'Analytics reporting registry includes requested marketing sources',
+  'apps/web/src/features/analytics/reportingSources.ts',
+  /meta_ads[\s\S]*google_ads[\s\S]*tiktok_ads[\s\S]*linkedin_ads[\s\S]*youtube[\s\S]*shopify/,
+);
+requirePattern(
+  'Connections exposes Shopify reporting source',
+  'apps/web/src/features/connections/ConnectionsPage.tsx',
+  /ReportingSourcesPanel[\s\S]*Shopify[\s\S]*Analytics can query/,
 );
 
 requirePattern(

@@ -2118,13 +2118,106 @@ a {
   color: var(--text);
   font-weight: 900;
 }
+
+.analytics-query-map {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.section-description {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.reporting-sources-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.reporting-source-registry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.reporting-source-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.reporting-source-card.is-connected {
+  border-color: rgba(4, 120, 87, 0.28);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fffb 100%);
+}
+
+.reporting-source-card__top,
+.reporting-source-card__meta,
+.reporting-source-card__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.reporting-source-card__top {
+  justify-content: space-between;
+}
+
+.reporting-source-card h4,
+.reporting-source-card p {
+  margin: 0;
+}
+
+.reporting-source-card p {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.reporting-source-card__meta span,
+.reporting-source-card__metrics span {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.reporting-source-card__metrics span {
+  background: #fdf2f8;
+  color: var(--primary);
+}
+
+.reporting-source-card > button {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.reporting-source-card > button:disabled {
+  opacity: 0.58;
+}
 @media (max-width: 1040px) {
   .content-creator-grid {
     grid-template-columns: 1fr;
   }
 
   .analytics-health-grid,
-  .analytics-source-grid {
+  .analytics-query-map,
+  .analytics-source-grid,
+  .reporting-source-registry {
     grid-template-columns: 1fr;
   }
 }

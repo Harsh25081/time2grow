@@ -202,7 +202,7 @@ export function AnalyticsPage() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Measure</p>
-          <h2>Analytics</h2>
+          <h2>Analytics Overview</h2>
         </div>
         <span className={hasReportingData || hasWorkflowData ? 'status-pill success' : 'status-pill warning'}>
           {hasReportingData ? `${metrics.length} metric rows` : hasWorkflowData ? 'Workflow data' : 'No data yet'}

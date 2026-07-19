@@ -69,9 +69,10 @@ One operational view across the workspace and its clients:
 Live pages: Business DNA, Analytics, Campaigns, Content Studio, Poster AI, Social Hub, Tasks, and
 Settings / Connections. Campaigns is the main operating tree; Content, AI Posters, Social, and Tasks
 sit under it. Connections is workspace configuration under Settings. The Home dashboard has early
-live stats, and Analytics v1 reads campaign, content, task, social, reporting source, and reporting
-metric data for a workspace health view. Leads / Inbox / Settings overview are stubs; competitors,
-maya, and trends are empty folders.
+live stats, and Analytics is now a main tree with Overview and Reporting Data subsections. Reporting
+Data registers Meta Ads, Google Ads, TikTok Ads, LinkedIn Ads, YouTube, and Shopify as normalized
+marketing sources so their rows can land in one queryable analytics store. Leads / Inbox / Settings
+overview are stubs; competitors, maya, and trends are empty folders.
 
 Existing org-scoped tables (RLS via `is_org_member` / `has_org_role`): profiles, organizations,
 memberships, invitations, business_dna, client_business_dna, campaigns, content_items, social_posts,
@@ -87,9 +88,10 @@ tables, ai_usage_log.
 | 5 Executive Dashboard | placeholder stat tiles | Real metrics, dependent on 2-4 producing data |
 
 Implementation note: AI proof verification, SOP Tasks, and the executive view have moved forward
-since the original table was written. `review_asset` v1, `marketing_tasks`, the Tasks UI, and
-Analytics v1 are now live; the remaining gaps are review history, task attachment, recurrence
-materialization, richer charts, and provider-backed ROI confidence.
+since the original table was written. `review_asset` v1, `marketing_tasks`, the Tasks UI, Analytics
+Overview, and Analytics Reporting Data are now live; the remaining gaps are review history, task
+attachment, recurrence materialization, provider sync execution, richer charts, and provider-backed
+ROI confidence.
 
 ## Roadmap
 

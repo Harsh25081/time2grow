@@ -23,6 +23,7 @@ import {
   type HandleStatus,
   type Provider,
 } from '../social-hub/shared';
+import { ReportingSourcesPanel } from '../analytics/ReportingSourcesPanel';
 
 type DistributionHandleRow = Database['public']['Tables']['distribution_handles']['Row'];
 
@@ -295,6 +296,12 @@ export function ConnectionsPage() {
         {connectionMessage ? <p className="form-message success">{connectionMessage}</p> : null}
         {connectionError ? <p className="form-message error">{connectionError}</p> : null}
       </section>
+
+      <ReportingSourcesPanel
+        eyebrow="Reporting"
+        title="Marketing data sources"
+        description="Connect reporting sources like Meta Ads, Google Ads, TikTok Ads, LinkedIn Ads, YouTube, and Shopify so Analytics can query them in one place."
+      />
 
       <section className="add-handle-panel" aria-label="Add handle to account">
         <div>

@@ -3,6 +3,7 @@ import {
   BarChart3,
   Bot,
   CalendarDays,
+  CircleDollarSign,
   Dna,
   Home,
   Inbox,
@@ -27,6 +28,7 @@ type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
 
 const BusinessDnaPage = lazy(() => import('../features/business-dna/BusinessDnaPage').then((module) => ({ default: module.BusinessDnaPage })));
 const AnalyticsPage = lazy(() => import('../features/analytics/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
+const AnalyticsReportingPage = lazy(() => import('../features/analytics/AnalyticsReportingPage').then((module) => ({ default: module.AnalyticsReportingPage })));
 const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
@@ -50,7 +52,11 @@ type NavItem = {
 const workspaceNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/business-dna', label: 'Business DNA', icon: Dna },
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+];
+
+const analyticsNav: NavItem[] = [
+  { to: '/analytics', label: 'Overview', icon: BarChart3, end: true },
+  { to: '/analytics/reporting', label: 'Reporting Data', icon: CircleDollarSign },
 ];
 
 const campaignNav: NavItem[] = [
@@ -76,7 +82,7 @@ const mobilePrimaryNav: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 const mobileMoreNav: NavItem[] = [
-  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  ...analyticsNav,
   ...campaignNav,
   ...settingsNav,
   ...laterNav,
@@ -189,6 +195,20 @@ export function AppShell() {
             </NavLink>
           ))}
           <div className="nav-section">
+            <NavLink to="/analytics" className="nav-item nav-item--parent">
+              <BarChart3 size={19} />
+              <span>Analytics</span>
+            </NavLink>
+            <div className="nav-children" aria-label="Analytics sections">
+              {analyticsNav.map((item) => (
+                <NavLink key={item.to} to={item.to} end={item.end} className="nav-item nav-item--child">
+                  <item.icon size={17} />
+                  <span>{item.label}</span>
+                </NavLink>
+              ))}
+            </div>
+          </div>
+          <div className="nav-section">
             <NavLink to="/campaigns" className="nav-item nav-item--parent">
               <Target size={19} />
               <span>Campaigns</span>
@@ -246,6 +266,7 @@ export function AppShell() {
           />
           <Route path="/business-dna" element={<BusinessDnaPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/analytics/reporting" element={<AnalyticsReportingPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/campaigns/content" element={<ContentCreatorPage />} />
           <Route path="/campaigns/posters" element={<PosterStudioAiPage />} />
