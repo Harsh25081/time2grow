@@ -33,6 +33,7 @@ const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').t
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
 const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
+const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })));
 const SocialHubPage = lazy(() => import('../features/social-hub/SocialHubPage').then((module) => ({ default: module.SocialHubPage })));
 const TasksPage = lazy(() => import('../features/tasks/TasksPage').then((module) => ({ default: module.TasksPage })));
 
@@ -67,6 +68,7 @@ const campaignNav: NavItem[] = [
 ];
 
 const settingsNav: NavItem[] = [
+  { to: '/settings', label: 'Overview', icon: Settings, end: true },
   { to: '/settings/connections', label: 'Connections', icon: Link2 },
 ];
 
@@ -280,7 +282,7 @@ export function AppShell() {
           <Route path="/connections" element={<Navigate to="/settings/connections" replace />} />
           <Route path="/leads" element={<ModulePlaceholder title="Leads CRM" icon={Target} />} />
           <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
-          <Route path="/settings" element={<ModulePlaceholder title="Settings" icon={Settings} />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/connections" element={<ConnectionsPage />} />
             <Route path="*" element={<NavigateHome />} />
           </Routes>

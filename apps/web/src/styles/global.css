@@ -1244,6 +1244,160 @@ a {
   min-width: 132px;
 }
 
+.settings-page {
+  gap: 20px;
+}
+
+.settings-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-overview article {
+  min-width: 0;
+  min-height: 108px;
+  display: grid;
+  align-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.settings-overview svg {
+  color: var(--primary);
+}
+
+.settings-overview span,
+.settings-overview small {
+  color: var(--muted);
+}
+
+.settings-overview span {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.settings-overview strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+  gap: 14px;
+  align-items: start;
+}
+
+.settings-main,
+.settings-side,
+.settings-panel,
+.settings-form,
+.settings-action-list {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.settings-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-form--single {
+  grid-template-columns: 1fr;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 7px;
+}
+
+.settings-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.settings-form input,
+.settings-form select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0 12px;
+  color: var(--text);
+  outline: none;
+}
+
+.settings-form input:disabled,
+.settings-form select:disabled {
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+.settings-form input:focus,
+.settings-form select:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(225, 28, 107, 0.12);
+}
+
+.settings-form .form-message,
+.settings-submit {
+  grid-column: 1 / -1;
+}
+
+.settings-action-row {
+  width: 100%;
+  min-height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  color: var(--text);
+  text-align: left;
+}
+
+.settings-action-row span {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.settings-action-row strong,
+.settings-action-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-action-row small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.settings-action-row svg {
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
 @media (max-width: 1120px) {
   .add-handle-form {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1256,6 +1410,19 @@ a {
 
 @media (max-width: 640px) {
   .add-handle-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .settings-layout,
+  .settings-overview {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .settings-form {
     grid-template-columns: 1fr;
   }
 }
