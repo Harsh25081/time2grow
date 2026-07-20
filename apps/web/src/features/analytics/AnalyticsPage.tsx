@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
+  Bot,
   CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   Loader2,
   MousePointerClick,
+  Sparkles,
   Target,
+  UserRound,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database, Json } from '../../types/database';
@@ -18,6 +21,7 @@ type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' |
 type ContentItemRow = Pick<Database['public']['Tables']['content_items']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'content_type' | 'metadata' | 'status' | 'created_at'>;
 type MarketingTaskRow = Pick<Database['public']['Tables']['marketing_tasks']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'status' | 'due_at' | 'recurrence' | 'created_at'>;
 type SocialPostRow = Pick<Database['public']['Tables']['social_posts']['Row'], 'id' | 'campaign_id' | 'client_business_dna_id' | 'status' | 'scheduled_at' | 'created_at'>;
+type LeadRow = Pick<Database['public']['Tables']['leads']['Row'], 'id' | 'client_business_dna_id' | 'campaign_id' | 'status' | 'source' | 'lead_type' | 'lead_score' | 'estimated_value' | 'created_at'>;
 type AnalyticsMetricRow = Database['public']['Tables']['analytics_metrics']['Row'];
 type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
 
@@ -76,6 +80,7 @@ export function AnalyticsPage() {
   const [contentItems, setContentItems] = useState<ContentItemRow[]>([]);
   const [tasks, setTasks] = useState<MarketingTaskRow[]>([]);
   const [socialPosts, setSocialPosts] = useState<SocialPostRow[]>([]);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
   const [metrics, setMetrics] = useState<AnalyticsMetricRow[]>([]);
   const [sources, setSources] = useState<AnalyticsSourceRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,6 +101,7 @@ export function AnalyticsPage() {
         setContentItems([]);
         setTasks([]);
         setSocialPosts([]);
+        setLeads([]);
         setMetrics([]);
         setSources([]);
         setLoading(false);
@@ -107,6 +113,7 @@ export function AnalyticsPage() {
         contentResult,
         taskResult,
         postResult,
+        leadResult,
         metricResult,
         sourceResult,
       ] = await Promise.all([
@@ -135,6 +142,12 @@ export function AnalyticsPage() {
           .order('created_at', { ascending: false })
           .limit(500),
         supabase
+          .from('leads')
+          .select('id, client_business_dna_id, campaign_id, status, source, lead_type, lead_score, estimated_value, created_at')
+          .eq('org_id', organization.id)
+          .order('created_at', { ascending: false })
+          .limit(500),
+        supabase
           .from('analytics_metrics')
           .select('*')
           .eq('org_id', organization.id)
@@ -154,6 +167,7 @@ export function AnalyticsPage() {
       setContentItems(contentResult.data ?? []);
       setTasks(taskResult.data ?? []);
       setSocialPosts(postResult.data ?? []);
+      setLeads(leadResult.data ?? []);
       setMetrics(metricResult.data ?? []);
       setSources(sourceResult.data ?? []);
 
@@ -162,6 +176,7 @@ export function AnalyticsPage() {
         loadError('Content', contentResult.error),
         loadError('Tasks', taskResult.error),
         loadError('Social posts', postResult.error),
+        loadError('Leads', leadResult.error),
         loadError('Reporting metrics', metricResult.error),
         loadError('Reporting sources', sourceResult.error),
       ].filter((error): error is LoadError => Boolean(error)));
@@ -205,6 +220,20 @@ export function AnalyticsPage() {
     const ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
     const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
     const connectedSources = sources.filter((source) => source.status === 'connected' || source.status === 'syncing').length;
+    const activeLeads = leads.filter((lead) => !['won', 'lost', 'archived'].includes(lead.status)).length;
+    const hotLeads = leads.filter((lead) => lead.lead_type === 'hot').length;
+    const wonLeads = leads.filter((lead) => lead.status === 'won').length;
+    const pipelineValue = leads
+      .filter((lead) => !['lost', 'archived'].includes(lead.status))
+      .reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
+    const wonValue = leads
+      .filter((lead) => lead.status === 'won')
+      .reduce((sum, lead) => sum + Number(lead.estimated_value || 0), 0);
+    const averageLeadScore = leads.length > 0
+      ? Math.round(leads.reduce((sum, lead) => sum + Number(lead.lead_score || 0), 0) / leads.length)
+      : 0;
+    const roi = totals.spend > 0 ? ((totals.revenue - totals.spend) / totals.spend) * 100 : 0;
+    const costPerLead = leads.length > 0 ? totals.spend / leads.length : 0;
 
     return {
       activeCampaigns,
@@ -220,9 +249,17 @@ export function AnalyticsPage() {
       totals,
       ctr,
       roas,
+      roi,
       connectedSources,
+      activeLeads,
+      hotLeads,
+      wonLeads,
+      pipelineValue,
+      wonValue,
+      averageLeadScore,
+      costPerLead,
     };
-  }, [campaigns, contentItems, metrics, socialPosts, sources, tasks]);
+  }, [campaigns, contentItems, leads, metrics, socialPosts, sources, tasks]);
 
   const clientRollups = useMemo(
     () => isAgency ? buildBrandRollups(clients, selfBrandName, campaigns, contentItems, tasks, socialPosts, metrics) : [],
@@ -230,7 +267,9 @@ export function AnalyticsPage() {
   );
   const campaignRollups = useMemo(() => buildCampaignRollups(campaigns, contentItems, tasks, socialPosts, metrics, brandNameById), [brandNameById, campaigns, contentItems, metrics, socialPosts, tasks]);
   const sourceRollups = useMemo(() => buildSourceRollups(metrics, sources), [metrics, sources]);
-  const hasWorkflowData = campaigns.length + contentItems.length + tasks.length + socialPosts.length > 0;
+  const leadSourceRows = useMemo(() => buildLeadSourceRows(leads), [leads]);
+  const insightRows = useMemo(() => buildInsightRows(analytics, campaigns.length, contentItems.length, leads.length, metrics.length), [analytics, campaigns.length, contentItems.length, leads.length, metrics.length]);
+  const hasWorkflowData = campaigns.length + contentItems.length + tasks.length + socialPosts.length + leads.length > 0;
   const hasReportingData = metrics.length > 0;
 
   return (
@@ -258,7 +297,15 @@ export function AnalyticsPage() {
             </section>
           ) : null}
 
-          <section className="stats-grid" aria-label="Analytics summary">
+          <section className="analytics-section-title" aria-label="Executive Dashboard">
+            <div>
+              <p className="eyebrow">Executive Dashboard</p>
+              <h3>Business overview</h3>
+            </div>
+            <Bot size={21} />
+          </section>
+
+          <section className="stats-grid" aria-label="Executive Dashboard KPIs">
             <article className="stat-card">
               <span>Active campaigns</span>
               <strong>{analytics.activeCampaigns}</strong>
@@ -270,28 +317,118 @@ export function AnalyticsPage() {
               <small>{analytics.overdueTasks} overdue · {analytics.recurringTasks} recurring</small>
             </article>
             <article className="stat-card">
-              <span>Published posts</span>
-              <strong>{analytics.publishedPosts}</strong>
-              <small>{analytics.queuedPosts} queued or publishing</small>
+              <span>Pipeline value</span>
+              <strong>{money(analytics.pipelineValue)}</strong>
+              <small>{analytics.activeLeads} active leads</small>
             </article>
           </section>
 
-          <section className="stats-grid" aria-label="Reporting summary">
+          <section className="analytics-section-title" aria-label="Revenue Analytics">
+            <div>
+              <p className="eyebrow">Revenue Analytics</p>
+              <h3>Spend, revenue, and conversions</h3>
+            </div>
+            <CircleDollarSign size={21} />
+          </section>
+
+          <section className="stats-grid" aria-label="Revenue Analytics KPIs">
             <article className="stat-card">
               <span>Spend</span>
               <strong>{money(analytics.totals.spend)}</strong>
               <small>{analytics.connectedSources} connected sources</small>
             </article>
             <article className="stat-card">
-              <span>Revenue</span>
-              <strong>{money(analytics.totals.revenue)}</strong>
-              <small>ROAS {analytics.roas.toFixed(2)}x</small>
+              <span>Won value</span>
+              <strong>{money(analytics.wonValue || analytics.totals.revenue)}</strong>
+              <small>{analytics.wonLeads} won leads</small>
             </article>
             <article className="stat-card">
               <span>Clicks</span>
               <strong>{number(analytics.totals.clicks)}</strong>
               <small>{analytics.ctr.toFixed(1)}% CTR from {number(analytics.totals.impressions)} impressions</small>
             </article>
+          </section>
+
+          <section className="analytics-section-title" aria-label="ROI Dashboard">
+            <div>
+              <p className="eyebrow">ROI Dashboard</p>
+              <h3>Return and efficiency</h3>
+            </div>
+            <MousePointerClick size={21} />
+          </section>
+
+          <section className="stats-grid" aria-label="ROI Dashboard KPIs">
+            <article className="stat-card">
+              <span>ROAS</span>
+              <strong>{analytics.roas.toFixed(2)}x</strong>
+              <small>Revenue divided by spend</small>
+            </article>
+            <article className="stat-card">
+              <span>ROI</span>
+              <strong>{formatSignedPercent(analytics.roi)}</strong>
+              <small>Net return on ad spend</small>
+            </article>
+            <article className="stat-card">
+              <span>Cost per lead</span>
+              <strong>{money(analytics.costPerLead)}</strong>
+              <small>{leads.length} leads tracked</small>
+            </article>
+          </section>
+
+          <section className="analytics-section-title" aria-label="Lead Analytics">
+            <div>
+              <p className="eyebrow">Lead Analytics</p>
+              <h3>CRM performance</h3>
+            </div>
+            <UserRound size={21} />
+          </section>
+
+          <section className="stats-grid" aria-label="Lead Analytics KPIs">
+            <article className="stat-card">
+              <span>Total leads</span>
+              <strong>{leads.length}</strong>
+              <small>{analytics.hotLeads} hot leads</small>
+            </article>
+            <article className="stat-card">
+              <span>Active leads</span>
+              <strong>{analytics.activeLeads}</strong>
+              <small>{analytics.averageLeadScore} average score</small>
+            </article>
+            <article className="stat-card">
+              <span>Won leads</span>
+              <strong>{analytics.wonLeads}</strong>
+              <small>{money(analytics.wonValue)} won value</small>
+            </article>
+          </section>
+
+          <section className="draft-panel analytics-visual-panel" aria-label="Lead source analytics">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Lead sources</p>
+                <h3>Where leads are coming from</h3>
+              </div>
+              <Target size={21} />
+            </div>
+            <div className="analytics-source-grid">
+              {leadSourceRows.length > 0 ? leadSourceRows.map((source) => (
+                <article className="analytics-source-card" key={source.source}>
+                  <div>
+                    <strong>{titleFromKey(source.source)}</strong>
+                    <span>{source.hot} hot</span>
+                  </div>
+                  <dl>
+                    <div><dt>Leads</dt><dd>{number(source.count)}</dd></div>
+                    <div><dt>Won</dt><dd>{number(source.won)}</dd></div>
+                    <div><dt>Value</dt><dd>{money(source.value)}</dd></div>
+                  </dl>
+                </article>
+              )) : (
+                <div className="queue-empty">
+                  <UserRound size={20} />
+                  <span>No lead source data yet.</span>
+                </div>
+              )}
+            </div>
           </section>
 
           {isAgency ? (
@@ -336,6 +473,14 @@ export function AnalyticsPage() {
               </div>
             </section>
           ) : null}
+
+          <section className="analytics-section-title" aria-label="Content Analytics">
+            <div>
+              <p className="eyebrow">Content Analytics</p>
+              <h3>Output, readiness, and operations</h3>
+            </div>
+            <Sparkles size={21} />
+          </section>
 
           <section className="work-band analytics-health-grid">
             <article className="draft-panel analytics-health-card">
@@ -384,7 +529,15 @@ export function AnalyticsPage() {
             </article>
           </section>
 
-          <section className="draft-panel saved-content-panel" aria-label="Campaign analytics">
+          <section className="analytics-section-title" aria-label="Campaign Analytics">
+            <div>
+              <p className="eyebrow">Campaign Analytics</p>
+              <h3>Campaign performance and readiness</h3>
+            </div>
+            <Target size={21} />
+          </section>
+
+          <section className="draft-panel saved-content-panel" aria-label="Campaign Analytics">
             <div className="section-heading content-library-heading">
               <div>
                 <p className="eyebrow">Campaigns</p>
@@ -428,7 +581,24 @@ export function AnalyticsPage() {
             </div>
           </section>
 
-          <section className="draft-panel saved-content-panel" aria-label="Source analytics">
+          <section className="analytics-section-title" aria-label="AI Insights">
+            <div>
+              <p className="eyebrow">AI Insights</p>
+              <h3>Maya recommendations</h3>
+            </div>
+            <Bot size={21} />
+          </section>
+
+          <section className="analytics-insight-grid" aria-label="AI Insights">
+            {insightRows.map((insight) => (
+              <article className="draft-panel analytics-insight-card" key={insight.title}>
+                <strong>{insight.title}</strong>
+                <p>{insight.body}</p>
+              </article>
+            ))}
+          </section>
+
+          <section className="draft-panel saved-content-panel" aria-label="Reporting source analytics">
             <div className="section-heading content-library-heading">
               <div>
                 <p className="eyebrow">Sources</p>
@@ -636,6 +806,61 @@ function buildSourceRollups(metrics: AnalyticsMetricRow[], sources: AnalyticsSou
   return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue || b.spend - a.spend);
 }
 
+function buildLeadSourceRows(leads: LeadRow[]) {
+  const map = new Map<string, { source: string; count: number; hot: number; won: number; value: number }>();
+  for (const lead of leads) {
+    const current = map.get(lead.source) ?? { source: lead.source, count: 0, hot: 0, won: 0, value: 0 };
+    current.count += 1;
+    if (lead.lead_type === 'hot') current.hot += 1;
+    if (lead.status === 'won') current.won += 1;
+    current.value += Number(lead.estimated_value || 0);
+    map.set(lead.source, current);
+  }
+  return Array.from(map.values()).sort((a, b) => b.count - a.count || b.value - a.value).slice(0, 6);
+}
+
+function buildInsightRows(
+  analytics: {
+    activeCampaigns: number;
+    approvedContent: number;
+    openTasks: number;
+    overdueTasks: number;
+    roas: number;
+    roi: number;
+    connectedSources: number;
+    hotLeads: number;
+    activeLeads: number;
+    costPerLead: number;
+  },
+  campaignCount: number,
+  contentCount: number,
+  leadCount: number,
+  metricCount: number,
+) {
+  const rows = [
+    analytics.roas >= 2
+      ? { title: 'Scale winners', body: `ROAS is ${analytics.roas.toFixed(2)}x. Increase spend on the campaigns and sources with the highest conversion quality.` }
+      : { title: 'Improve ROI first', body: `ROAS is ${analytics.roas.toFixed(2)}x. Tighten offers, landing copy, and follow-up before scaling spend.` },
+    analytics.hotLeads > 0
+      ? { title: 'Prioritize hot leads', body: `${analytics.hotLeads} hot leads are active. Route them to faster follow-up and campaign retargeting.` }
+      : { title: 'Create stronger lead signals', body: 'No hot leads are visible yet. Add clearer offers and conversion-focused CTAs to campaigns.' },
+    analytics.overdueTasks > 0
+      ? { title: 'Clear execution blockers', body: `${analytics.overdueTasks} overdue tasks may be slowing campaign output. Resolve them before launching new work.` }
+      : { title: 'Execution is healthy', body: 'No overdue campaign tasks are visible. Keep the publishing rhythm consistent.' },
+    analytics.connectedSources > 0 && metricCount > 0
+      ? { title: 'Reporting is active', body: `${analytics.connectedSources} sources are connected. Use source-level ROI to decide where the next campaign budget goes.` }
+      : { title: 'Connect reporting data', body: 'Add reporting sources in Settings so Maya can compare spend, revenue, ROI, and lead flow.' },
+  ];
+
+  if (campaignCount === 0 || contentCount === 0 || leadCount === 0) {
+    rows.push({ title: 'Complete the growth loop', body: 'Campaigns, content, and leads should all be connected so Analytics can show true business outcomes.' });
+  } else if (analytics.costPerLead > 0) {
+    rows.push({ title: 'Watch cost per lead', body: `Current cost per lead is ${money(analytics.costPerLead)}. Compare it with won value before adding budget.` });
+  }
+
+  return rows.slice(0, 5);
+}
+
 function campaignReadiness(campaign: CampaignRollup) {
   const contentScore = percent(campaign.approvedContent, Math.max(campaign.content, 1));
   const taskScore = percent(campaign.tasks - campaign.openTasks, Math.max(campaign.tasks, 1));
@@ -684,6 +909,10 @@ function ratio(value: number, total: number) {
 
 function percentText(value: number) {
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatSignedPercent(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
 }
 
 function money(value: number) {

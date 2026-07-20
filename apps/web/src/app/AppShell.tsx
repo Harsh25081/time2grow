@@ -1,24 +1,30 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, type ReactNode, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
+  Bell,
   Bot,
+  Building2,
   CalendarDays,
   CircleDollarSign,
+  CreditCard,
   Dna,
   Home,
   Inbox,
   Link2,
+  Loader2,
   LogOut,
   Menu,
   Search,
   Send,
   Settings,
+  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
+  UsersRound,
   X,
 } from 'lucide-react';
-import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
+import { Link, Navigate, NavLink, Route, Routes } from 'react-router-dom';
 
 import { useAuth } from '../features/auth/AuthProvider';
 
@@ -27,6 +33,10 @@ import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 
 type BusinessDnaRow = Database['public']['Tables']['business_dna']['Row'];
+type HomeTaskRow = Pick<Database['public']['Tables']['marketing_tasks']['Row'], 'id' | 'title' | 'status' | 'due_at'>;
+type HomeLeadRow = Pick<Database['public']['Tables']['leads']['Row'], 'id' | 'full_name' | 'status' | 'lead_type' | 'next_follow_up_at'>;
+type HomeCampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status'>;
+type HomeContentRow = Pick<Database['public']['Tables']['content_items']['Row'], 'id' | 'title' | 'status' | 'content_type' | 'updated_at'>;
 
 const BusinessDnaPage = lazy(() => import('../features/business-dna/BusinessDnaPage').then((module) => ({ default: module.BusinessDnaPage })));
 const AnalyticsPage = lazy(() => import('../features/analytics/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
@@ -78,6 +88,11 @@ const campaignNav: NavItem[] = [
 const settingsNav: NavItem[] = [
   { to: '/settings', label: 'Overview', icon: Settings, end: true },
   { to: '/settings/connections', label: 'Connections', icon: Link2 },
+  { to: '/settings/team', label: 'Team', icon: UsersRound },
+  { to: '/settings/workspace', label: 'Workspace', icon: Building2 },
+  { to: '/settings/billing', label: 'Billing', icon: CreditCard },
+  { to: '/settings/notifications', label: 'Notifications', icon: Bell },
+  { to: '/settings/security', label: 'Security', icon: ShieldCheck },
 ];
 
 const laterNav: NavItem[] = [
@@ -97,52 +112,6 @@ const mobileMoreNav: NavItem[] = [
   ...settingsNav,
   ...laterNav,
 ];
-
-const modules = [
-  {
-    title: 'Business DNA',
-    description: 'Capture positioning, audience, proof, colors, and growth goals.',
-    status: 'Live',
-    color: 'pink',
-  },
-  {
-    title: 'Content Studio',
-    description: 'Generate posts from DNA, campaign context, and persona tone.',
-    status: 'Live',
-    color: 'purple',
-  },
-  {
-    title: 'Poster Studio',
-    description: 'Create premium AI posters from Business DNA and save them for publishing.',
-    status: 'Live',
-    color: 'pink',
-  },
-  {
-    title: 'Social Distribution Hub',
-    description: 'Publish posts, posters, and videos to connected social and messaging channels.',
-    status: 'Priority',
-    color: 'blue',
-  },
-  {
-    title: 'Trend Radar',
-    description: 'Track market signals and turn rising opportunities into campaigns.',
-    status: 'Live',
-    color: 'green',
-  },
-  {
-    title: 'Competitor Intelligence',
-    description: 'Monitor competitors, detect threats, and turn gaps into campaigns.',
-    status: 'Live',
-    color: 'blue',
-  },
-  {
-    title: 'Lead CRM',
-    description: 'Track lead source, status, value, campaign source, and follow-up timeline.',
-    status: 'Live',
-    color: 'green',
-  },
-];
-
 
 export function AppShell() {
   const { profile, organization, membership, signOut, configured } = useAuth();
@@ -314,6 +283,11 @@ export function AppShell() {
           <Route path="/inbox" element={<InboxPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/connections" element={<ConnectionsPage />} />
+          <Route path="/settings/team" element={<SettingsPage section="team" />} />
+          <Route path="/settings/workspace" element={<SettingsPage section="workspace" />} />
+          <Route path="/settings/billing" element={<SettingsPage section="billing" />} />
+          <Route path="/settings/notifications" element={<SettingsPage section="notifications" />} />
+          <Route path="/settings/security" element={<SettingsPage section="security" />} />
             <Route path="*" element={<NavigateHome />} />
           </Routes>
         </Suspense>
@@ -378,23 +352,159 @@ function Dashboard({
   planKey: string;
   stats: WorkspaceDashboardStats | null;
 }) {
+  const { organization } = useAuth();
+  const [tasks, setTasks] = useState<HomeTaskRow[]>([]);
+  const [leads, setLeads] = useState<HomeLeadRow[]>([]);
+  const [campaigns, setCampaigns] = useState<HomeCampaignRow[]>([]);
+  const [contentItems, setContentItems] = useState<HomeContentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const today = useMemo(() => new Date(), []);
   const workspaceStats = [
     { label: 'AI units today', value: stats ? String(stats.aiUsageToday) : '—', hint: stats ? 'of 40 daily units' : 'Usage unavailable' },
     { label: 'Workspace plan', value: titleCase(stats?.planKey ?? planKey), hint: 'Current workspace plan' },
     { label: 'Distribution handles', value: stats ? String(stats.distributionHandles) : '—', hint: stats ? 'Enabled destinations' : 'Count unavailable' },
   ];
 
+  const home = useMemo(() => {
+    const todayTasks = tasks.filter((task) => isToday(task.due_at, today) && !['approved', 'done', 'archived'].includes(task.status));
+    const overdueTasks = tasks.filter((task) => isBeforeToday(task.due_at, today) && !['approved', 'done', 'archived'].includes(task.status));
+    const followUps = leads.filter((lead) => isToday(lead.next_follow_up_at, today) && !['won', 'lost', 'archived'].includes(lead.status));
+    const hotLeads = leads.filter((lead) => lead.lead_type === 'hot' && !['won', 'lost', 'archived'].includes(lead.status));
+    const activeCampaigns = campaigns.filter((campaign) => campaign.status === 'active').length;
+    const pausedCampaigns = campaigns.filter((campaign) => campaign.status === 'paused').length;
+    const readyContent = contentItems.filter((item) => item.status === 'ready').length;
+    const queuedContent = contentItems.filter((item) => item.status === 'queued').length;
+    const draftContent = contentItems.filter((item) => item.status === 'draft').length;
+    return { todayTasks, overdueTasks, followUps, hotLeads, activeCampaigns, pausedCampaigns, readyContent, queuedContent, draftContent };
+  }, [campaigns, contentItems, leads, tasks, today]);
+  const recommendations = useMemo(() => buildHomeRecommendations(home, stats), [home, stats]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadHome() {
+      setLoading(true);
+      setError('');
+
+      if (!supabase || !organization?.id) {
+        setTasks([]);
+        setLeads([]);
+        setCampaigns([]);
+        setContentItems([]);
+        setLoading(false);
+        return;
+      }
+
+      const [taskResult, leadResult, campaignResult, contentResult] = await Promise.all([
+        supabase.from('marketing_tasks').select('id, title, status, due_at').eq('org_id', organization.id).neq('status', 'archived').order('due_at', { ascending: true, nullsFirst: false }).limit(80),
+        supabase.from('leads').select('id, full_name, status, lead_type, next_follow_up_at').eq('org_id', organization.id).neq('status', 'archived').order('next_follow_up_at', { ascending: true, nullsFirst: false }).limit(120),
+        supabase.from('campaigns').select('id, name, status').eq('org_id', organization.id).neq('status', 'archived').order('updated_at', { ascending: false }).limit(80),
+        supabase.from('content_items').select('id, title, status, content_type, updated_at').eq('org_id', organization.id).neq('status', 'archived').order('updated_at', { ascending: false }).limit(80),
+      ]);
+
+      if (!active) return;
+      setTasks(taskResult.data ?? []);
+      setLeads(leadResult.data ?? []);
+      setCampaigns(campaignResult.data ?? []);
+      setContentItems(contentResult.data ?? []);
+      const firstError = taskResult.error || leadResult.error || campaignResult.error || contentResult.error;
+      setError(firstError ? errorMessage(firstError, 'Could not load Home data.') : '');
+      setLoading(false);
+    }
+
+    loadHome();
+    return () => {
+      active = false;
+    };
+  }, [organization?.id]);
+
   return (
     <div className="page-stack">
       <header className="page-header">
         <div>
           <p className="eyebrow">Good to see you, {profileName}</p>
-          <h2>{orgName}</h2>
+          <h2>Home</h2>
         </div>
         <span className={configured ? 'status-pill success' : 'status-pill warning'}>
-          {configured ? 'Supabase connected' : 'Env setup needed'}
+          {configured ? orgName : 'Env setup needed'}
         </span>
       </header>
+
+      {loading ? (
+        <section className="empty-state" aria-label="Loading Home">
+          <Loader2 className="spin" size={28} />
+          <h3>Loading Home</h3>
+        </section>
+      ) : (
+        <>
+          {error ? <p className="form-message warning">{error}</p> : null}
+
+          <section className="home-brief-panel" aria-label="Maya Executive Brief">
+            <div>
+              <p className="eyebrow">Maya Executive Brief</p>
+              <h3>{home.todayTasks.length + home.followUps.length > 0 ? 'Start with follow-up and execution.' : 'Workspace is calm this morning.'}</h3>
+              <p>{executiveBrief(home, stats)}</p>
+            </div>
+            <Bot size={26} />
+          </section>
+
+          <section className="stats-grid" aria-label="Home summary">
+            <article className="stat-card">
+              <span>Today's tasks</span>
+              <strong>{home.todayTasks.length}</strong>
+              <small>{home.overdueTasks.length} overdue</small>
+            </article>
+            <article className="stat-card">
+              <span>Today's follow-ups</span>
+              <strong>{home.followUps.length}</strong>
+              <small>{home.hotLeads.length} hot leads</small>
+            </article>
+            <article className="stat-card">
+              <span>Campaign Health</span>
+              <strong>{home.activeCampaigns}</strong>
+              <small>{home.pausedCampaigns} paused campaigns</small>
+            </article>
+          </section>
+
+          <section className="home-grid" aria-label="Daily workspace">
+            <HomePanel title="Today's Tasks" icon={<CalendarDays size={20} />}>
+              <HomeList rows={home.todayTasks.slice(0, 5).map((task) => ({ id: task.id, title: task.title, meta: titleCase(task.status) }))} empty="No tasks due today." />
+            </HomePanel>
+            <HomePanel title="Today's Follow-ups" icon={<Target size={20} />}>
+              <HomeList rows={home.followUps.slice(0, 5).map((lead) => ({ id: lead.id, title: lead.full_name, meta: `${titleCase(lead.lead_type)} - ${titleCase(lead.status)}` }))} empty="No follow-ups due today." />
+            </HomePanel>
+            <HomePanel title="Lead Summary" icon={<Inbox size={20} />}>
+              <div className="home-mini-metrics">
+                <span><strong>{leads.length}</strong>Total</span>
+                <span><strong>{home.hotLeads.length}</strong>Hot</span>
+                <span><strong>{leads.filter((lead) => lead.status === 'won').length}</strong>Won</span>
+              </div>
+            </HomePanel>
+            <HomePanel title="Content Queue" icon={<Sparkles size={20} />}>
+              <div className="home-mini-metrics">
+                <span><strong>{home.readyContent}</strong>Ready</span>
+                <span><strong>{home.queuedContent}</strong>Queued</span>
+                <span><strong>{home.draftContent}</strong>Draft</span>
+              </div>
+            </HomePanel>
+          </section>
+
+          <section className="home-grid secondary" aria-label="Actions and recommendations">
+            <HomePanel title="Quick Actions" icon={<Send size={20} />}>
+              <div className="home-action-grid">
+                <Link to="/campaigns/content">Create content</Link>
+                <Link to="/campaigns/posters">Create poster</Link>
+                <Link to="/leads">Review leads</Link>
+                <Link to="/inbox">Open Inbox</Link>
+              </div>
+            </HomePanel>
+            <HomePanel title="AI Recommendations" icon={<Bot size={20} />}>
+              <HomeList rows={recommendations.map((item, index) => ({ id: String(index), title: item, meta: 'Maya' }))} empty="No recommendations yet." />
+            </HomePanel>
+          </section>
+        </>
+      )}
 
       <section className="stats-grid" aria-label="Workspace stats">
         {workspaceStats.map((stat) => (
@@ -406,46 +516,112 @@ function Dashboard({
         ))}
       </section>
 
-      <section className="work-band">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Build order</p>
-            <h3>Foundation modules</h3>
-          </div>
-          <span>V1 core</span>
-        </div>
-
-        <div className="module-grid">
-          {modules.map((module) => (
-            <article className={`module-card ${module.color}`} key={module.title}>
-              <div>
-                <h4>{module.title}</h4>
-                <p>{module.description}</p>
-              </div>
-              <span>{module.status}</span>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="activity-band">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Today</p>
-            <h3>Setup checklist</h3>
-          </div>
-          <CalendarDays size={21} />
-        </div>
-        <ol className="checklist">
-          <li className="is-done">React app shell created</li>
-          <li className="is-done">Supabase auth client wired</li>
-          <li className="is-done">Profiles and workspace migration added</li>
-          <li>Run migration in Supabase</li>
-          <li>Create first user account</li>
-        </ol>
-      </section>
     </div>
   );
+}
+
+function HomePanel({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return (
+    <section className="draft-panel home-panel">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Home</p>
+          <h3>{title}</h3>
+        </div>
+        {icon}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function HomeList({ rows, empty }: { rows: Array<{ id: string; title: string; meta: string }>; empty: string }) {
+  if (rows.length === 0) return <p className="home-empty">{empty}</p>;
+
+  return (
+    <div className="home-list">
+      {rows.map((row) => (
+        <article key={row.id}>
+          <strong>{row.title}</strong>
+          <small>{row.meta}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function executiveBrief(
+  home: {
+    todayTasks: HomeTaskRow[];
+    overdueTasks: HomeTaskRow[];
+    followUps: HomeLeadRow[];
+    hotLeads: HomeLeadRow[];
+    activeCampaigns: number;
+    readyContent: number;
+    queuedContent: number;
+  },
+  stats: WorkspaceDashboardStats | null,
+) {
+  const parts = [
+    `${home.todayTasks.length} tasks due today`,
+    `${home.followUps.length} follow-ups`,
+    `${home.hotLeads.length} hot leads`,
+    `${home.activeCampaigns} active campaigns`,
+  ];
+  if (home.readyContent + home.queuedContent > 0) parts.push(`${home.readyContent + home.queuedContent} content items ready or queued`);
+  if (stats) parts.push(`${stats.aiUsageToday} AI units used today`);
+  if (home.overdueTasks.length > 0) parts.push(`${home.overdueTasks.length} overdue tasks need attention`);
+  return parts.join('. ') + '.';
+}
+
+function buildHomeRecommendations(
+  home: {
+    todayTasks: HomeTaskRow[];
+    overdueTasks: HomeTaskRow[];
+    followUps: HomeLeadRow[];
+    hotLeads: HomeLeadRow[];
+    activeCampaigns: number;
+    readyContent: number;
+    queuedContent: number;
+    draftContent: number;
+  },
+  stats: WorkspaceDashboardStats | null,
+) {
+  const recommendations: string[] = [];
+  if (home.hotLeads.length > 0) recommendations.push('Start with hot lead follow-ups before creating new campaigns.');
+  if (home.overdueTasks.length > 0) recommendations.push('Clear overdue tasks to protect campaign delivery.');
+  if (home.readyContent > 0) recommendations.push('Move ready content into Social Distribution Hub today.');
+  if (home.draftContent > home.readyContent + home.queuedContent) recommendations.push('Review draft content and approve the strongest pieces.');
+  if (home.activeCampaigns === 0) recommendations.push('Launch or reactivate one campaign so the workspace has a growth focus.');
+  if (stats && stats.distributionHandles === 0) recommendations.push('Connect publishing handles so content can move from creation to distribution.');
+  if (recommendations.length === 0) recommendations.push('Keep today focused: review Inbox, follow up with leads, and queue the next content item.');
+  return recommendations.slice(0, 5);
+}
+
+function isToday(value: string | null, today: Date) {
+  if (!value) return false;
+  const date = new Date(value);
+  return date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
+}
+
+function isBeforeToday(value: string | null, today: Date) {
+  if (!value) return false;
+  const date = new Date(value);
+  const start = new Date(today);
+  start.setHours(0, 0, 0, 0);
+  return date.getTime() < start.getTime();
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const parts = [record.message, record.details, record.hint, record.code].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+    if (parts.length > 0) return parts.join(' - ');
+  }
+  return fallback;
 }
 
 function parseDashboardStats(value: unknown): WorkspaceDashboardStats | null {

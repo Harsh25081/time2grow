@@ -923,6 +923,56 @@ export type Database = {
         };
         Relationships: [];
       };
+      notification_preferences: {
+        Row: {
+          id: string;
+          org_id: string;
+          user_id: string;
+          email_enabled: boolean;
+          inbox_mentions: boolean;
+          lead_alerts: boolean;
+          campaign_updates: boolean;
+          competitor_alerts: boolean;
+          trend_alerts: boolean;
+          weekly_digest: boolean;
+          quiet_hours_start: string | null;
+          quiet_hours_end: string | null;
+          metadata: Json;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          user_id: string;
+          email_enabled?: boolean;
+          inbox_mentions?: boolean;
+          lead_alerts?: boolean;
+          campaign_updates?: boolean;
+          competitor_alerts?: boolean;
+          trend_alerts?: boolean;
+          weekly_digest?: boolean;
+          quiet_hours_start?: string | null;
+          quiet_hours_end?: string | null;
+          metadata?: Json;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          email_enabled?: boolean;
+          inbox_mentions?: boolean;
+          lead_alerts?: boolean;
+          campaign_updates?: boolean;
+          competitor_alerts?: boolean;
+          trend_alerts?: boolean;
+          weekly_digest?: boolean;
+          quiet_hours_start?: string | null;
+          quiet_hours_end?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       trend_radar_items: {
         Row: {
           id: string;

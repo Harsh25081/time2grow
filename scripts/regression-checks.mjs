@@ -165,6 +165,11 @@ requirePattern(
   /workspace_dashboard_stats[\s\S]*AI units today[\s\S]*Distribution handles/,
 );
 requirePattern(
+  'Home is a morning executive dashboard',
+  'apps/web/src/app/AppShell.tsx',
+  /(?=[\s\S]*Maya Executive Brief)(?=[\s\S]*Today's Tasks)(?=[\s\S]*Today's Follow-ups)(?=[\s\S]*Campaign Health)(?=[\s\S]*Lead Summary)(?=[\s\S]*Content Queue)(?=[\s\S]*Quick Actions)(?=[\s\S]*AI Recommendations)/,
+);
+requirePattern(
   'mobile navigation uses a secondary More menu',
   'apps/web/src/app/AppShell.tsx',
   /mobilePrimaryNav[\s\S]*mobileMoreNav[\s\S]*mobile-more-menu/,
@@ -286,8 +291,8 @@ requirePattern(
 );
 requirePattern(
   'Social Hub visible label is renamed',
-  'apps/web/src/app/AppShell.tsx',
-  /Social Distribution Hub[\s\S]*Distribution/,
+  'apps/web/src/features/social-hub/SocialHubPage.tsx',
+  /(?=[\s\S]*Social Distribution Hub)(?=[\s\S]*Distribution)/,
 );
 requirePattern(
   'Campaign work modules sit under Campaigns',
@@ -300,6 +305,21 @@ requirePattern(
   /settingsNav[\s\S]*\/settings\/connections[\s\S]*path="\/connections" element=\{<Navigate to="\/settings\/connections"/,
 );
 requirePattern(
+  'Settings tree includes requested sections',
+  'apps/web/src/app/AppShell.tsx',
+  /settingsNav[\s\S]*\/settings\/connections[\s\S]*\/settings\/team[\s\S]*\/settings\/workspace[\s\S]*\/settings\/billing[\s\S]*\/settings\/notifications[\s\S]*\/settings\/security[\s\S]*path="\/settings\/team"[\s\S]*path="\/settings\/security"/,
+);
+requirePattern(
+  'Settings pages implement team workspace notifications security and billing coming soon',
+  'apps/web/src/features/settings/SettingsPage.tsx',
+  /(?=[\s\S]*Connections)(?=[\s\S]*Team)(?=[\s\S]*Workspace)(?=[\s\S]*Billing)(?=[\s\S]*Notifications)(?=[\s\S]*Security)(?=[\s\S]*Coming soon)(?=[\s\S]*notification_preferences)(?=[\s\S]*organization_memberships)/,
+);
+requirePattern(
+  'Notification preferences are org-scoped and user-owned',
+  'supabase/migrations/20260720131500_notification_preferences.sql',
+  /create table if not exists public\.notification_preferences[\s\S]*org_id uuid not null[\s\S]*user_id uuid not null[\s\S]*notification_preferences_select_members[\s\S]*notification_preferences_write_own/,
+);
+requirePattern(
   'Analytics page is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
   /AnalyticsPage[\s\S]*analyticsNav[\s\S]*\/analytics\/reporting[\s\S]*path="\/analytics"[\s\S]*path="\/analytics\/reporting"/,
@@ -307,7 +327,12 @@ requirePattern(
 requirePattern(
   'Analytics page reads workflow and reporting data',
   'apps/web/src/features/analytics/AnalyticsPage.tsx',
-  /from\('campaigns'\)[\s\S]*from\('content_items'\)[\s\S]*from\('marketing_tasks'\)[\s\S]*from\('social_posts'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('analytics_sources'\)/,
+  /from\('campaigns'\)[\s\S]*from\('content_items'\)[\s\S]*from\('marketing_tasks'\)[\s\S]*from\('social_posts'\)[\s\S]*from\('leads'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('analytics_sources'\)/,
+);
+requirePattern(
+  'Analytics page is organized into business dashboards',
+  'apps/web/src/features/analytics/AnalyticsPage.tsx',
+  /(?=[\s\S]*Executive Dashboard)(?=[\s\S]*Campaign Analytics)(?=[\s\S]*Content Analytics)(?=[\s\S]*Lead Analytics)(?=[\s\S]*Revenue Analytics)(?=[\s\S]*ROI Dashboard)(?=[\s\S]*AI Insights)/,
 );
 requirePattern(
   'Analytics reporting registry includes requested marketing sources',
