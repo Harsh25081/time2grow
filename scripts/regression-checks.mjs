@@ -135,6 +135,21 @@ requirePattern(
   /membership[\s\S]*canWrite[\s\S]*role-gated-fieldset[\s\S]*ClientBrandManager[\s\S]*canWrite=/,
 );
 requirePattern(
+  'Business DNA stores platform brain fields',
+  'supabase/migrations/20260720120000_business_dna_brain_fields.sql',
+  /brand_voice[\s\S]*ideal_customer_profile[\s\S]*products_services[\s\S]*faqs[\s\S]*pricing[\s\S]*offers[\s\S]*competitors[\s\S]*brand_assets[\s\S]*sales_scripts[\s\S]*policies[\s\S]*website_summary[\s\S]*social_links/,
+);
+requirePattern(
+  'Business DNA page captures expanded brain sections',
+  'apps/web/src/features/business-dna/BusinessDnaPage.tsx',
+  /brandVoice[\s\S]*idealCustomerProfile[\s\S]*productsServices[\s\S]*salesScripts[\s\S]*socialLinks[\s\S]*brand_voice[\s\S]*ideal_customer_profile/,
+);
+requirePattern(
+  'AI handler extracts and summarizes expanded Business DNA',
+  'supabase/functions/ai-handler/index.ts',
+  /brandVoice[\s\S]*idealCustomerProfile[\s\S]*productsServices[\s\S]*salesScripts[\s\S]*socialLinks[\s\S]*brand_voice[\s\S]*ideal_customer_profile/,
+);
+requirePattern(
   'Poster Studio blocks viewer generation and saves',
   'apps/web/src/features/poster-studio/PosterStudioAiPage.tsx',
   /membership[\s\S]*canWrite[\s\S]*Ask an owner, admin, or editor to generate posters[\s\S]*disabled=\{generating \|\| !canWrite\}/,

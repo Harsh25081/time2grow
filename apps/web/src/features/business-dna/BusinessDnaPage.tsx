@@ -28,6 +28,18 @@ type FormState = {
   mission: string;
   vision: string;
   positioning: string;
+  brandVoice: string;
+  idealCustomerProfile: string;
+  productsServices: string;
+  faqs: string;
+  pricing: string;
+  offers: string;
+  competitors: string;
+  brandAssets: string;
+  salesScripts: string;
+  policies: string;
+  websiteSummary: string;
+  socialLinks: string;
   values: string;
   audience: string;
   proofPoints: string;
@@ -61,6 +73,18 @@ const emptyForm: FormState = {
   mission: '',
   vision: '',
   positioning: '',
+  brandVoice: '',
+  idealCustomerProfile: '',
+  productsServices: '',
+  faqs: '',
+  pricing: '',
+  offers: '',
+  competitors: '',
+  brandAssets: '',
+  salesScripts: '',
+  policies: '',
+  websiteSummary: '',
+  socialLinks: '',
   values: '',
   audience: '',
   proofPoints: '',
@@ -89,6 +113,18 @@ type ExtractedDna = {
   mission: string;
   vision: string;
   positioning: string;
+  brandVoice?: string;
+  idealCustomerProfile?: string;
+  productsServices?: string;
+  faqs?: string;
+  pricing?: string;
+  offers?: string;
+  competitors?: string;
+  brandAssets?: string;
+  salesScripts?: string;
+  policies?: string;
+  websiteSummary?: string;
+  socialLinks?: string;
   values: string;
   audience: string;
   proofPoints: string;
@@ -213,6 +249,18 @@ export function BusinessDnaPage() {
         mission: dna.mission || current.mission,
         vision: dna.vision || current.vision,
         positioning: dna.positioning || current.positioning,
+        brandVoice: dna.brandVoice || current.brandVoice,
+        idealCustomerProfile: dna.idealCustomerProfile || current.idealCustomerProfile,
+        productsServices: dna.productsServices || current.productsServices,
+        faqs: dna.faqs || current.faqs,
+        pricing: dna.pricing || current.pricing,
+        offers: dna.offers || current.offers,
+        competitors: dna.competitors || current.competitors,
+        brandAssets: dna.brandAssets || current.brandAssets,
+        salesScripts: dna.salesScripts || current.salesScripts,
+        policies: dna.policies || current.policies,
+        websiteSummary: dna.websiteSummary || current.websiteSummary,
+        socialLinks: dna.socialLinks || current.socialLinks,
         values: dna.values || current.values,
         audience: dna.audience || current.audience,
         proofPoints: dna.proofPoints || current.proofPoints,
@@ -381,6 +429,18 @@ export function BusinessDnaPage() {
         mission: form.mission.trim() || null,
         vision: form.vision.trim() || null,
         positioning: form.positioning.trim() || null,
+        brand_voice: form.brandVoice.trim() || null,
+        ideal_customer_profile: form.idealCustomerProfile.trim() || null,
+        products_services: form.productsServices.trim() || null,
+        faqs: form.faqs.trim() || null,
+        pricing: form.pricing.trim() || null,
+        offers: form.offers.trim() || null,
+        competitors: form.competitors.trim() || null,
+        brand_assets: form.brandAssets.trim() || null,
+        sales_scripts: form.salesScripts.trim() || null,
+        policies: form.policies.trim() || null,
+        website_summary: form.websiteSummary.trim() || null,
+        social_links: form.socialLinks.trim() || null,
         values: form.values.trim() || null,
         audience: form.audience.trim() || null,
         proof_points: form.proofPoints.trim() || null,
@@ -477,6 +537,69 @@ export function BusinessDnaPage() {
             <label>
               <span>Key metric</span>
               <input value={form.keyMetric} onChange={(event) => updateField('keyMetric', event.target.value)} placeholder="Example: Monthly recurring revenue" />
+            </label>
+
+            <label className="draft-body-field">
+              <span>Brand voice</span>
+              <textarea value={form.brandVoice} onChange={(event) => updateField('brandVoice', event.target.value)} rows={3} placeholder="Tone, vocabulary, personality, writing do's and don'ts" />
+            </label>
+
+            <label className="draft-body-field">
+              <span>ICP</span>
+              <textarea value={form.idealCustomerProfile} onChange={(event) => updateField('idealCustomerProfile', event.target.value)} rows={3} placeholder="Best-fit customer, pains, buying triggers, objections, and decision makers" />
+            </label>
+
+            <label className="draft-body-field">
+              <span>Products &amp; services</span>
+              <textarea value={form.productsServices} onChange={(event) => updateField('productsServices', event.target.value)} rows={3} placeholder="What you sell, packages, service scope, deliverables, and outcomes" />
+            </label>
+
+            <div className="poster-field-row draft-body-field">
+              <label>
+                <span>Pricing</span>
+                <textarea value={form.pricing} onChange={(event) => updateField('pricing', event.target.value)} rows={3} placeholder="Plans, price ranges, retainers, inclusions, and conditions" />
+              </label>
+              <label>
+                <span>Offers</span>
+                <textarea value={form.offers} onChange={(event) => updateField('offers', event.target.value)} rows={3} placeholder="Current offers, bundles, trials, discounts, or seasonal pushes" />
+              </label>
+            </div>
+
+            <div className="poster-field-row draft-body-field">
+              <label>
+                <span>FAQs</span>
+                <textarea value={form.faqs} onChange={(event) => updateField('faqs', event.target.value)} rows={3} placeholder="Questions customers ask before buying" />
+              </label>
+              <label>
+                <span>Competitors</span>
+                <textarea value={form.competitors} onChange={(event) => updateField('competitors', event.target.value)} rows={3} placeholder="Competitors, alternatives, and how you differ" />
+              </label>
+            </div>
+
+            <label className="draft-body-field">
+              <span>Sales scripts</span>
+              <textarea value={form.salesScripts} onChange={(event) => updateField('salesScripts', event.target.value)} rows={3} placeholder="Call scripts, DM replies, qualification questions, and closing lines" />
+            </label>
+
+            <label className="draft-body-field">
+              <span>Policies</span>
+              <textarea value={form.policies} onChange={(event) => updateField('policies', event.target.value)} rows={3} placeholder="Refunds, delivery, onboarding, cancellation, compliance, or service boundaries" />
+            </label>
+
+            <div className="poster-field-row draft-body-field">
+              <label>
+                <span>Website</span>
+                <textarea value={form.websiteSummary} onChange={(event) => updateField('websiteSummary', event.target.value)} rows={3} placeholder="Website pages, landing pages, forms, and important conversion paths" />
+              </label>
+              <label>
+                <span>Social links</span>
+                <textarea value={form.socialLinks} onChange={(event) => updateField('socialLinks', event.target.value)} rows={3} placeholder="Instagram, YouTube, LinkedIn, Facebook, WhatsApp, Google Business, and other URLs" />
+              </label>
+            </div>
+
+            <label className="draft-body-field">
+              <span>Brand assets</span>
+              <textarea value={form.brandAssets} onChange={(event) => updateField('brandAssets', event.target.value)} rows={3} placeholder="Logos, colors, fonts, image style, brand rules, proof assets, brochures, and media links" />
             </label>
 
             <div className="draft-body-field dna-logo-section">
@@ -666,6 +789,18 @@ function mapRowToForm(row: BusinessDnaRow): FormState {
     mission: row.mission ?? '',
     vision: row.vision ?? '',
     positioning: row.positioning ?? '',
+    brandVoice: row.brand_voice ?? '',
+    idealCustomerProfile: row.ideal_customer_profile ?? '',
+    productsServices: row.products_services ?? '',
+    faqs: row.faqs ?? '',
+    pricing: row.pricing ?? '',
+    offers: row.offers ?? '',
+    competitors: row.competitors ?? '',
+    brandAssets: row.brand_assets ?? '',
+    salesScripts: row.sales_scripts ?? '',
+    policies: row.policies ?? '',
+    websiteSummary: row.website_summary ?? '',
+    socialLinks: row.social_links ?? '',
     values: row.values ?? '',
     audience: row.audience ?? '',
     proofPoints: row.proof_points ?? '',
