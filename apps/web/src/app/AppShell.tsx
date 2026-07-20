@@ -187,7 +187,7 @@ export function AppShell() {
             </NavLink>
           ))}
           <div className="nav-section">
-            <NavLink to="/analytics" className="nav-item nav-item--parent">
+            <NavLink to="/analytics" end className="nav-item nav-item--parent">
               <BarChart3 size={19} />
               <span>Analytics</span>
             </NavLink>
@@ -201,7 +201,7 @@ export function AppShell() {
             </div>
           </div>
           <div className="nav-section">
-            <NavLink to="/campaigns" className="nav-item nav-item--parent">
+            <NavLink to="/campaigns" end className="nav-item nav-item--parent">
               <Target size={19} />
               <span>Campaigns</span>
             </NavLink>
@@ -223,13 +223,13 @@ export function AppShell() {
             <span>Inbox</span>
           </NavLink>
           <div className="nav-section">
-            <NavLink to="/settings" className="nav-item nav-item--parent">
+            <NavLink to="/settings" end className="nav-item nav-item--parent">
               <Settings size={19} />
               <span>Settings</span>
             </NavLink>
             <div className="nav-children" aria-label="Settings sections">
               {settingsNav.map((item) => (
-                <NavLink key={item.to} to={item.to} className="nav-item nav-item--child">
+                <NavLink key={item.to} to={item.to} end={item.end} className="nav-item nav-item--child">
                   <item.icon size={17} />
                   <span>{item.label}</span>
                 </NavLink>
@@ -306,7 +306,7 @@ export function AppShell() {
           </div>
           <div className="mobile-more-menu__grid">
             {mobileMoreNav.map((item) => (
-              <NavLink key={item.to} to={item.to} className="mobile-more-menu__item" onClick={() => setMobileMenuOpen(false)}>
+              <NavLink key={item.to} to={item.to} end={item.end} className="mobile-more-menu__item" onClick={() => setMobileMenuOpen(false)}>
                 <item.icon size={20} />
                 <span>{item.label}</span>
               </NavLink>
