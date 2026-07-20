@@ -587,8 +587,9 @@ export type Database = {
           company: string | null;
           email: string | null;
           phone: string | null;
-          source: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          source: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'referrals' | 'whatsapp' | 'instagram' | 'facebook' | 'google_forms' | 'imports' | 'comments' | 'dms' | 'campaign' | 'event' | 'other';
           status: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_type: 'hot' | 'warm' | 'cold';
           lead_score: number;
           estimated_value: number | null;
           next_follow_up_at: string | null;
@@ -609,8 +610,9 @@ export type Database = {
           company?: string | null;
           email?: string | null;
           phone?: string | null;
-          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'referrals' | 'whatsapp' | 'instagram' | 'facebook' | 'google_forms' | 'imports' | 'comments' | 'dms' | 'campaign' | 'event' | 'other';
           status?: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_type?: 'hot' | 'warm' | 'cold';
           lead_score?: number;
           estimated_value?: number | null;
           next_follow_up_at?: string | null;
@@ -629,8 +631,9 @@ export type Database = {
           company?: string | null;
           email?: string | null;
           phone?: string | null;
-          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'whatsapp' | 'campaign' | 'event' | 'other';
+          source?: 'manual' | 'website' | 'social' | 'ads' | 'referral' | 'referrals' | 'whatsapp' | 'instagram' | 'facebook' | 'google_forms' | 'imports' | 'comments' | 'dms' | 'campaign' | 'event' | 'other';
           status?: 'new' | 'contacted' | 'qualified' | 'proposal' | 'won' | 'lost' | 'archived';
+          lead_type?: 'hot' | 'warm' | 'cold';
           lead_score?: number;
           estimated_value?: number | null;
           next_follow_up_at?: string | null;

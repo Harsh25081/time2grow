@@ -185,6 +185,16 @@ requirePattern(
   /from\('leads'\)[\s\S]*eq\('org_id', organization\.id\)[\s\S]*canWrite[\s\S]*Create lead[\s\S]*client_business_dna_id[\s\S]*campaign_id/,
 );
 requirePattern(
+  'Leads CRM captures detailed sources and lead type',
+  'apps/web/src/features/leads/LeadsPage.tsx',
+  /instagram[\s\S]*facebook[\s\S]*google_forms[\s\S]*comments[\s\S]*dms[\s\S]*leadTypeOptions[\s\S]*lead_type/,
+);
+requirePattern(
+  'Leads schema supports detailed sources and lead type',
+  'supabase/migrations/20260720123000_lead_sources_and_temperature.sql',
+  /leads_source_check[\s\S]*instagram[\s\S]*facebook[\s\S]*google_forms[\s\S]*imports[\s\S]*comments[\s\S]*dms[\s\S]*lead_type[\s\S]*hot[\s\S]*warm[\s\S]*cold/,
+);
+requirePattern(
   'Leads CRM imports sheets',
   'apps/web/src/features/leads/LeadsPage.tsx',
   /parseLeadFile[\s\S]*accept="\.xlsx,\.csv,\.tsv[\s\S]*Import leads/,

@@ -10,7 +10,10 @@ import { parseLeadFile, parseSourceLeads, type ParsedLead } from './leadImport';
 type LeadRow = Database['public']['Tables']['leads']['Row'];
 type LeadStatus = LeadRow['status'];
 type LeadSource = LeadRow['source'];
+type LeadType = LeadRow['lead_type'];
 type LeadFilter = 'all' | LeadStatus | 'follow_up';
+type LeadTypeFilter = 'all' | LeadType;
+type LeadSourceFilter = 'all' | LeadSource;
 type IntakeMode = 'none' | 'manual' | 'import' | 'sync';
 type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
@@ -22,6 +25,7 @@ type LeadForm = {
   phone: string;
   source: LeadSource;
   status: LeadStatus;
+  leadType: LeadType;
   leadScore: string;
   estimatedValue: string;
   nextFollowUpAt: string;
@@ -44,14 +48,30 @@ const statusOptions: Array<{ value: LeadStatus; label: string }> = [
 
 const sourceOptions: Array<{ value: LeadSource; label: string }> = [
   { value: 'manual', label: 'Manual' },
-  { value: 'campaign', label: 'Campaign' },
-  { value: 'website', label: 'Website' },
-  { value: 'social', label: 'Social' },
-  { value: 'ads', label: 'Ads' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'facebook', label: 'Facebook' },
   { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'referral', label: 'Referral' },
-  { value: 'event', label: 'Event' },
+  { value: 'website', label: 'Website' },
+  { value: 'google_forms', label: 'Google Forms' },
+  { value: 'referrals', label: 'Referrals' },
+  { value: 'imports', label: 'Imports' },
+  { value: 'comments', label: 'Comments' },
+  { value: 'dms', label: 'DMs' },
   { value: 'other', label: 'Other' },
+];
+
+const legacySourceLabels: Partial<Record<LeadSource, string>> = {
+  social: 'Social',
+  ads: 'Ads',
+  referral: 'Referral',
+  campaign: 'Campaign',
+  event: 'Event',
+};
+
+const leadTypeOptions: Array<{ value: LeadType; label: string; score: string }> = [
+  { value: 'hot', label: 'Hot', score: '80' },
+  { value: 'warm', label: 'Warm', score: '50' },
+  { value: 'cold', label: 'Cold', score: '20' },
 ];
 
 const filters: Array<{ value: LeadFilter; label: string }> = [
@@ -79,6 +99,7 @@ const emptyForm: LeadForm = {
   phone: '',
   source: 'manual',
   status: 'new',
+  leadType: 'warm',
   leadScore: '25',
   estimatedValue: '',
   nextFollowUpAt: '',
@@ -95,7 +116,7 @@ export function LeadsPage() {
   const [form, setForm] = useState<LeadForm>(emptyForm);
   const [importBrandSelectionId, setImportBrandSelectionId] = useState(SELF_BRAND_ID);
   const [importCampaignId, setImportCampaignId] = useState('');
-  const [importSource, setImportSource] = useState<LeadSource>('ads');
+  const [importSource, setImportSource] = useState<LeadSource>('imports');
   const [importPreview, setImportPreview] = useState<ParsedLead[]>([]);
   const [importFileName, setImportFileName] = useState('');
   const [importSkipped, setImportSkipped] = useState(0);
@@ -103,6 +124,8 @@ export function LeadsPage() {
   const [editingId, setEditingId] = useState('');
   const [intakeMode, setIntakeMode] = useState<IntakeMode>('none');
   const [filter, setFilter] = useState<LeadFilter>('all');
+  const [leadTypeFilter, setLeadTypeFilter] = useState<LeadTypeFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -206,16 +229,22 @@ export function LeadsPage() {
   }, [leads]);
 
   const visibleLeads = useMemo(() => {
-    if (filter === 'all') return leads;
-    if (filter === 'follow_up') return leads.filter((lead) => isFollowUpDue(lead));
-    return leads.filter((lead) => lead.status === filter);
-  }, [filter, leads]);
+    return leads.filter((lead) => {
+      if (filter === 'follow_up' && !isFollowUpDue(lead)) return false;
+      if (filter !== 'all' && filter !== 'follow_up' && lead.status !== filter) return false;
+      if (leadTypeFilter !== 'all' && lead.lead_type !== leadTypeFilter) return false;
+      if (sourceFilter !== 'all' && lead.source !== sourceFilter) return false;
+      return true;
+    });
+  }, [filter, leadTypeFilter, leads, sourceFilter]);
 
   const summary = useMemo(() => {
     const open = leads.filter((lead) => !['won', 'lost', 'archived'].includes(lead.status)).length;
-    const wonValue = leads.filter((lead) => lead.status === 'won').reduce((sum, lead) => sum + (lead.estimated_value ?? 0), 0);
-    return { open, wonValue, followUps: counts.get('follow_up') ?? 0 };
-  }, [counts, leads]);
+    const hot = leads.filter((lead) => lead.lead_type === 'hot' && lead.status !== 'archived').length;
+    const warm = leads.filter((lead) => lead.lead_type === 'warm' && lead.status !== 'archived').length;
+    const cold = leads.filter((lead) => lead.lead_type === 'cold' && lead.status !== 'archived').length;
+    return { open, hot, warm, cold };
+  }, [leads]);
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
@@ -244,6 +273,7 @@ export function LeadsPage() {
       phone: lead.phone ?? '',
       source: lead.source,
       status: lead.status,
+      leadType: lead.lead_type,
       leadScore: String(lead.lead_score),
       estimatedValue: lead.estimated_value === null ? '' : String(lead.estimated_value),
       nextFollowUpAt: lead.next_follow_up_at ? lead.next_follow_up_at.slice(0, 10) : '',
@@ -281,6 +311,7 @@ export function LeadsPage() {
       phone: form.phone.trim() || null,
       source: form.source,
       status: form.status,
+      lead_type: form.leadType,
       lead_score: boundedNumber(form.leadScore, 0, 100, 0),
       estimated_value: nullableMoney(form.estimatedValue),
       next_follow_up_at: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : null,
@@ -444,6 +475,7 @@ export function LeadsPage() {
       phone: row.phone || null,
       source: row.source,
       status: row.status,
+      lead_type: row.leadType,
       lead_score: row.leadScore,
       estimated_value: row.estimatedValue,
       next_follow_up_at: row.nextFollowUpAt,
@@ -510,14 +542,19 @@ export function LeadsPage() {
               <small>Active lead conversations</small>
             </article>
             <article>
-              <span>Won value</span>
-              <strong>{formatMoney(summary.wonValue)}</strong>
-              <small>Tracked from closed leads</small>
+              <span>Hot</span>
+              <strong>{summary.hot}</strong>
+              <small>Ready for fast follow-up</small>
             </article>
             <article>
-              <span>Due follow-ups</span>
-              <strong>{summary.followUps}</strong>
-              <small>Today or overdue</small>
+              <span>Warm</span>
+              <strong>{summary.warm}</strong>
+              <small>Nurture and qualify</small>
+            </article>
+            <article>
+              <span>Cold</span>
+              <strong>{summary.cold}</strong>
+              <small>Low intent or long-term</small>
             </article>
           </section>
 
@@ -574,6 +611,19 @@ export function LeadsPage() {
                 <span>Status</span>
                 <select value={form.status} onChange={(event) => updateForm('status', event.target.value as LeadStatus)}>
                   {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Lead type</span>
+                <select
+                  value={form.leadType}
+                  onChange={(event) => {
+                    const leadType = event.target.value as LeadType;
+                    updateForm('leadType', leadType);
+                    updateForm('leadScore', leadTypeOptions.find((item) => item.value === leadType)?.score ?? form.leadScore);
+                  }}
+                >
+                  {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                 </select>
               </label>
               <label>
@@ -746,6 +796,22 @@ export function LeadsPage() {
                   </button>
                 ))}
               </div>
+              <div className="lead-filter-row">
+                <label>
+                  <span>Type</span>
+                  <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value as LeadTypeFilter)}>
+                    <option value="all">All types</option>
+                    {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>Source</span>
+                  <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as LeadSourceFilter)}>
+                    <option value="all">All sources</option>
+                    {sourceOptions.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
+                  </select>
+                </label>
+              </div>
             </div>
 
             <div className="saved-content-list">
@@ -759,6 +825,7 @@ export function LeadsPage() {
                       <p>{[lead.company, lead.email, lead.phone].filter(Boolean).join(' - ') || 'No contact details saved yet.'}</p>
                       <div className="saved-content-row__meta">
                         <span>{statusLabel(lead.status)}</span>
+                        <span className={`lead-type-pill ${lead.lead_type}`}>{leadTypeLabel(lead.lead_type)}</span>
                         <span>{sourceLabel(lead.source)}</span>
                         {isAgency ? <span>{lead.client_business_dna_id ? clientNameById.get(lead.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
                         {lead.campaign_id ? <span>{campaignNameById.get(lead.campaign_id) ?? 'Campaign'}</span> : null}
@@ -782,6 +849,11 @@ export function LeadsPage() {
                           <label className="task-status-select">
                             <select value={lead.status} disabled={updatingId === lead.id} onChange={(event) => patchLead(lead, { status: event.target.value as LeadStatus })}>
                               {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                            </select>
+                          </label>
+                          <label className="task-status-select">
+                            <select value={lead.lead_type} disabled={updatingId === lead.id} onChange={(event) => patchLead(lead, { lead_type: event.target.value as LeadType })}>
+                              {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                             </select>
                           </label>
                           <button type="button" className="icon-text-button" onClick={() => startEdit(lead)}>
@@ -849,7 +921,11 @@ function mergeLeads(current: LeadRow[], nextRows: LeadRow[]) {
 }
 
 function sourceKeyToLeadSource(sourceKey: string): LeadSource {
-  if (sourceKey.includes('meta') || sourceKey.includes('google') || sourceKey.includes('tiktok') || sourceKey.includes('linkedin')) return 'ads';
+  if (sourceKey.includes('instagram')) return 'instagram';
+  if (sourceKey.includes('facebook') || sourceKey.includes('meta')) return 'facebook';
+  if (sourceKey.includes('google_form') || sourceKey.includes('form')) return 'google_forms';
+  if (sourceKey.includes('whatsapp')) return 'whatsapp';
+  if (sourceKey.includes('google') || sourceKey.includes('tiktok') || sourceKey.includes('linkedin')) return 'ads';
   if (sourceKey.includes('shopify')) return 'website';
   if (sourceKey.includes('youtube')) return 'social';
   return 'other';
@@ -883,7 +959,11 @@ function statusLabel(value: LeadStatus) {
 }
 
 function sourceLabel(value: LeadSource) {
-  return sourceOptions.find((source) => source.value === value)?.label ?? value;
+  return sourceOptions.find((source) => source.value === value)?.label ?? legacySourceLabels[value] ?? value;
+}
+
+function leadTypeLabel(value: LeadType) {
+  return leadTypeOptions.find((type) => type.value === value)?.label ?? value;
 }
 
 function formatDate(value: string) {

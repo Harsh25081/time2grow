@@ -3,6 +3,7 @@ import type { Database, Json } from '../../types/database';
 
 export type LeadSource = Database['public']['Tables']['leads']['Row']['source'];
 export type LeadStatus = Database['public']['Tables']['leads']['Row']['status'];
+export type LeadType = Database['public']['Tables']['leads']['Row']['lead_type'];
 
 export type ParsedLead = {
   fullName: string;
@@ -11,6 +12,7 @@ export type ParsedLead = {
   phone: string;
   source: LeadSource;
   status: LeadStatus;
+  leadType: LeadType;
   leadScore: number;
   estimatedValue: number | null;
   nextFollowUpAt: string | null;
@@ -35,6 +37,7 @@ const headerAliases = {
   phone: ['phone', 'mobile', 'phone number', 'contact number', 'whatsapp', 'whatsapp number'],
   source: ['source', 'lead source', 'platform', 'channel'],
   status: ['status', 'stage', 'pipeline status'],
+  leadType: ['lead type', 'type', 'temperature', 'lead temperature', 'hot warm cold'],
   leadScore: ['score', 'lead score', 'quality score'],
   estimatedValue: ['value', 'estimated value', 'deal value', 'budget', 'revenue'],
   nextFollowUpAt: ['follow up', 'follow-up', 'next follow up', 'next follow-up', 'follow up date'],
@@ -43,8 +46,9 @@ const headerAliases = {
   externalLeadId: ['id', 'lead id', 'external id', 'form id', 'submission id'],
 };
 
-const sourceValues: LeadSource[] = ['manual', 'website', 'social', 'ads', 'referral', 'whatsapp', 'campaign', 'event', 'other'];
+const sourceValues: LeadSource[] = ['manual', 'website', 'social', 'ads', 'referral', 'referrals', 'whatsapp', 'instagram', 'facebook', 'google_forms', 'imports', 'comments', 'dms', 'campaign', 'event', 'other'];
 const statusValues: LeadStatus[] = ['new', 'contacted', 'qualified', 'proposal', 'won', 'lost', 'archived'];
+const leadTypeValues: LeadType[] = ['hot', 'warm', 'cold'];
 
 export async function parseLeadFile(file: File, fallbackSource: LeadSource): Promise<LeadParseResult> {
   const extension = file.name.split('.').pop()?.toLowerCase() ?? '';
@@ -95,6 +99,8 @@ function normalizeRow(row: RawRow, fallbackSource: LeadSource, metadataBase: Rec
 
   const source = normalizeSource(stringField(row, headerAliases.source), fallbackSource);
   const status = normalizeStatus(stringField(row, headerAliases.status));
+  const leadScore = boundedNumber(stringField(row, headerAliases.leadScore), 0, 100, 25);
+  const leadType = normalizeLeadType(stringField(row, headerAliases.leadType), leadScore);
   const externalLeadId = stringField(row, headerAliases.externalLeadId) || email || phone || null;
 
   return {
@@ -104,7 +110,8 @@ function normalizeRow(row: RawRow, fallbackSource: LeadSource, metadataBase: Rec
     phone,
     source,
     status,
-    leadScore: boundedNumber(stringField(row, headerAliases.leadScore), 0, 100, 25),
+    leadType,
+    leadScore,
     estimatedValue: nullableNumber(stringField(row, headerAliases.estimatedValue)),
     nextFollowUpAt: dateValue(stringField(row, headerAliases.nextFollowUpAt)),
     notes: stringField(row, headerAliases.notes),
@@ -127,12 +134,29 @@ function normalizeHeader(value: string) {
 function normalizeSource(value: string, fallback: LeadSource): LeadSource {
   const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, '_');
   if (sourceValues.includes(normalized as LeadSource)) return normalized as LeadSource;
+  if (normalized.includes('google_form') || normalized.includes('form')) return 'google_forms';
+  if (normalized.includes('import') || normalized.includes('sheet') || normalized.includes('excel')) return 'imports';
+  if (normalized.includes('comment')) return 'comments';
+  if (normalized.includes('dm') || normalized.includes('direct_message')) return 'dms';
+  if (normalized.includes('instagram') || normalized === 'ig') return 'instagram';
+  if (normalized.includes('facebook') || normalized === 'fb') return 'facebook';
   if (normalized.includes('meta') || normalized.includes('google') || normalized.includes('ad')) return 'ads';
   if (normalized.includes('whatsapp')) return 'whatsapp';
-  if (normalized.includes('refer')) return 'referral';
+  if (normalized.includes('refer')) return 'referrals';
   if (normalized.includes('web') || normalized.includes('site')) return 'website';
-  if (normalized.includes('instagram') || normalized.includes('facebook') || normalized.includes('linkedin') || normalized.includes('social')) return 'social';
+  if (normalized.includes('linkedin') || normalized.includes('social')) return 'social';
   return fallback;
+}
+
+function normalizeLeadType(value: string, score: number): LeadType {
+  const normalized = value.trim().toLowerCase().replace(/[_\s-]+/g, '_');
+  if (leadTypeValues.includes(normalized as LeadType)) return normalized as LeadType;
+  if (normalized.includes('fire') || normalized.includes('hot')) return 'hot';
+  if (normalized.includes('warm')) return 'warm';
+  if (normalized.includes('cold')) return 'cold';
+  if (score >= 70) return 'hot';
+  if (score <= 34) return 'cold';
+  return 'warm';
 }
 
 function normalizeStatus(value: string): LeadStatus {
