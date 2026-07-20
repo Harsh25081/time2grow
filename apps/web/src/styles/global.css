@@ -575,6 +575,47 @@ a {
   flex-shrink: 0;
 }
 
+.maya-definition-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 16px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+}
+
+.maya-definition-panel h3,
+.maya-definition-panel p {
+  margin: 0;
+}
+
+.maya-definition-panel p {
+  margin-top: 8px;
+  color: #4b5563;
+  line-height: 1.55;
+}
+
+.maya-capability-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.maya-capability-grid span {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #eadcf8;
+  border-radius: 999px;
+  background: #fbf7ff;
+  padding: 0 10px;
+  color: #663399;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .home-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -710,11 +751,6 @@ a {
   line-height: 1.5;
 }
 
-.maya-launcher:disabled {
-  cursor: default;
-  opacity: 0.78;
-}
-
 .maya-launcher {
   position: fixed;
   right: 24px;
@@ -731,6 +767,158 @@ a {
   color: #ffffff;
   font-weight: 900;
   box-shadow: 0 18px 36px rgba(155, 81, 224, 0.28);
+}
+
+.maya-chat {
+  position: fixed;
+  right: 24px;
+  bottom: 84px;
+  z-index: 40;
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(680px, calc(100vh - 118px));
+  display: grid;
+  grid-template-rows: auto minmax(180px, 1fr) auto auto auto;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+  box-shadow: 0 24px 60px rgba(17, 24, 39, 0.18);
+}
+
+.maya-chat__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.maya-chat__header h3 {
+  margin: 0;
+}
+
+.maya-chat__body {
+  min-height: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.maya-message {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 11px;
+}
+
+.maya-message.user {
+  margin-left: 36px;
+  border-color: #dbeafe;
+  background: #eff6ff;
+}
+
+.maya-message.assistant {
+  margin-right: 24px;
+}
+
+.maya-message p {
+  margin: 0;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.maya-message small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.maya-message__section {
+  display: grid;
+  gap: 5px;
+}
+
+.maya-message__section strong {
+  font-size: 12px;
+}
+
+.maya-message__section span {
+  color: #4b5563;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.maya-source-list,
+.maya-starters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.maya-source-list span {
+  border-radius: 999px;
+  background: #f8fafc;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.maya-starters button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  padding: 0 9px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.maya-chat__composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.maya-chat__composer input {
+  min-width: 0;
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.maya-send-button {
+  width: 42px;
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: var(--ai);
+  color: #ffffff;
+}
+
+.maya-send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.maya-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
 }
 
 .bottom-nav,
@@ -768,6 +956,7 @@ a {
   .stats-grid,
   .home-grid,
   .home-grid.secondary,
+  .maya-definition-panel,
   .module-grid {
     grid-template-columns: 1fr;
   }
@@ -851,6 +1040,12 @@ a {
   .maya-launcher {
     right: 14px;
     bottom: 88px;
+  }
+
+  .maya-chat {
+    right: 14px;
+    bottom: 146px;
+    max-height: calc(100vh - 178px);
   }
 }
 

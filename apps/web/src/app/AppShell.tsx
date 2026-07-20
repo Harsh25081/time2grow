@@ -29,6 +29,7 @@ import { Link, Navigate, NavLink, Route, Routes } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthProvider';
 
 import { deriveBrandDisplayName } from '../features/business-dna/brandIdentity';
+import { MayaAssistant } from '../features/maya/MayaAssistant';
 import { supabase } from '../lib/supabase';
 import type { Database } from '../types/database';
 
@@ -98,6 +99,18 @@ const settingsNav: NavItem[] = [
 const laterNav: NavItem[] = [
   { to: '/leads', label: 'Leads', icon: Target },
   { to: '/inbox', label: 'Inbox', icon: Inbox },
+];
+
+const mayaCapabilities = [
+  'Strategy',
+  'Campaign Planning',
+  'Content Creation',
+  'Poster Suggestions',
+  'Lead Intelligence',
+  'Competitor Analysis',
+  'Analytics',
+  'Scheduling',
+  'Executive Briefings',
 ];
 
 const mobilePrimaryNav: NavItem[] = [
@@ -293,10 +306,7 @@ export function AppShell() {
         </Suspense>
       </main>
 
-      <button className="maya-launcher" type="button" title="Maya assistant — coming soon" disabled>
-        <Bot size={22} />
-        <span>Maya · Soon</span>
-      </button>
+      <MayaAssistant />
 
       {mobileMenuOpen ? (
         <nav className="mobile-more-menu" id="mobile-more-menu" aria-label="More navigation">
@@ -447,6 +457,19 @@ function Dashboard({
               <p>{executiveBrief(home, stats)}</p>
             </div>
             <Bot size={26} />
+          </section>
+
+          <section className="maya-definition-panel" aria-label="Maya">
+            <div>
+              <p className="eyebrow">Maya</p>
+              <h3>AI Growth Partner</h3>
+              <p>Maya understands the Business DNA and helps users across every module.</p>
+            </div>
+            <div className="maya-capability-grid">
+              {mayaCapabilities.map((capability) => (
+                <span key={capability}>{capability}</span>
+              ))}
+            </div>
           </section>
 
           <section className="stats-grid" aria-label="Home summary">

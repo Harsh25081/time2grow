@@ -12,6 +12,28 @@ This document holds the product objective and roadmap. Setup and run instruction
 [README.md](../README.md); SaaS-readiness (tenancy, billing, security) stays in
 `time2grow-full-saas.config.json`.
 
+## Maya
+
+Maya is the AI Growth Partner that understands the Business DNA and helps users across every module.
+Inside the app, Maya works as a workspace-aware chatbot that can answer questions, give executive
+briefings, and produce insights from the available org-scoped data across campaigns, content, leads,
+inbox, analytics, trends, competitors, scheduling, and connected sources.
+
+Capabilities:
+
+- Strategy
+- Campaign Planning
+- Content Creation
+- Poster Suggestions
+- Lead Intelligence
+- Competitor Analysis
+- Analytics
+- Scheduling
+- Executive Briefings
+
+Maya is one of time2grow's biggest differentiators because she turns the product from a set of tools
+into an AI Growth Workspace that can explain what is happening and recommend what to do next.
+
 ## The five operations pillars
 
 ### 1. AI Proof Verification

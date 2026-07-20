@@ -170,6 +170,16 @@ requirePattern(
   /(?=[\s\S]*Maya Executive Brief)(?=[\s\S]*Today's Tasks)(?=[\s\S]*Today's Follow-ups)(?=[\s\S]*Campaign Health)(?=[\s\S]*Lead Summary)(?=[\s\S]*Content Queue)(?=[\s\S]*Quick Actions)(?=[\s\S]*AI Recommendations)/,
 );
 requirePattern(
+  'Maya is a workspace-aware chatbot',
+  'apps/web/src/features/maya/MayaAssistant.tsx',
+  /(?=[\s\S]*AI Growth Partner)(?=[\s\S]*Ask Maya anything about this workspace)(?=[\s\S]*action: 'ask_maya')(?=[\s\S]*strategy, campaigns, content, posters, leads, competitors, analytics, scheduling)/i,
+);
+requirePattern(
+  'Maya AI action reads workspace modules server-side',
+  'supabase/functions/ai-handler/index.ts',
+  /ask_maya: askMaya[\s\S]*loadMayaWorkspaceContext[\s\S]*from\('business_dna'\)[\s\S]*from\('leads'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('competitors'\)/,
+);
+requirePattern(
   'mobile navigation uses a secondary More menu',
   'apps/web/src/app/AppShell.tsx',
   /mobilePrimaryNav[\s\S]*mobileMoreNav[\s\S]*mobile-more-menu/,
