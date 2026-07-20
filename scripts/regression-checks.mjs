@@ -180,6 +180,11 @@ requirePattern(
   /ask_maya: askMaya[\s\S]*loadMayaWorkspaceContext[\s\S]*from\('business_dna'\)[\s\S]*from\('leads'\)[\s\S]*from\('analytics_metrics'\)[\s\S]*from\('competitors'\)/,
 );
 requirePattern(
+  'Home shows the proactive growth loop',
+  'apps/web/src/app/AppShell.tsx',
+  /growthLoopSteps[\s\S]*Business DNA[\s\S]*Trend Radar[\s\S]*Campaigns[\s\S]*Content Studio \/ Poster Studio[\s\S]*Distribution Hub[\s\S]*Unified Inbox[\s\S]*Leads CRM[\s\S]*Analytics[\s\S]*Maya Recommendations[\s\S]*Improve & Repeat/,
+);
+requirePattern(
   'mobile navigation uses a secondary More menu',
   'apps/web/src/app/AppShell.tsx',
   /mobilePrimaryNav[\s\S]*mobileMoreNav[\s\S]*mobile-more-menu/,

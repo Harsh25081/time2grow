@@ -34,6 +34,25 @@ Capabilities:
 Maya is one of time2grow's biggest differentiators because she turns the product from a set of tools
 into an AI Growth Workspace that can explain what is happening and recommend what to do next.
 
+## Growth Loop
+
+The product workflow is proactive, not reactive. time2grow should guide users through this loop:
+
+1. Business DNA
+2. Trend Radar
+3. Campaigns
+4. Content Studio / Poster Studio
+5. Distribution Hub
+6. Unified Inbox
+7. Leads CRM
+8. Analytics
+9. Maya Recommendations
+10. Improve & Repeat
+
+Trend Radar moves the system upstream: Maya can spot market signals before a user manually decides
+what to promote. Analytics and Inbox outcomes then feed the next recommendations, so each cycle gets
+smarter.
+
 ## The five operations pillars
 
 ### 1. AI Proof Verification

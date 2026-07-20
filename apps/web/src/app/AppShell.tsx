@@ -113,6 +113,19 @@ const mayaCapabilities = [
   'Executive Briefings',
 ];
 
+const growthLoopSteps = [
+  'Business DNA',
+  'Trend Radar',
+  'Campaigns',
+  'Content Studio / Poster Studio',
+  'Distribution Hub',
+  'Unified Inbox',
+  'Leads CRM',
+  'Analytics',
+  'Maya Recommendations',
+  'Improve & Repeat',
+];
+
 const mobilePrimaryNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/business-dna', label: 'Business DNA', icon: Dna },
@@ -468,6 +481,24 @@ function Dashboard({
             <div className="maya-capability-grid">
               {mayaCapabilities.map((capability) => (
                 <span key={capability}>{capability}</span>
+              ))}
+            </div>
+          </section>
+
+          <section className="growth-loop-panel" aria-label="Growth Loop">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">Growth Loop</p>
+                <h3>From signal to learning, every cycle</h3>
+              </div>
+              <TrendingUp size={20} />
+            </div>
+            <div className="growth-loop-track">
+              {growthLoopSteps.map((step, index) => (
+                <span key={step}>
+                  <strong>{index + 1}</strong>
+                  {step}
+                </span>
               ))}
             </div>
           </section>
