@@ -2227,7 +2227,8 @@ a {
 
 .inbox-thread strong,
 .inbox-thread small,
-.inbox-thread > span:last-child {
+.inbox-thread > span:last-child,
+.inbox-thread-labels {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2236,6 +2237,7 @@ a {
 
 .inbox-thread small,
 .inbox-thread > span:last-child,
+.inbox-thread-labels,
 .inbox-contact-line,
 .inbox-message div {
   color: var(--muted);
@@ -2294,6 +2296,76 @@ a {
   padding: 10px 12px;
 }
 
+.inbox-assist-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 0.8fr);
+  gap: 10px;
+}
+
+.inbox-tool-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px;
+  min-width: 0;
+}
+
+.inbox-tool-heading,
+.inbox-template-row,
+.inbox-mentions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.inbox-tool-heading {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inbox-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inbox-label-row button,
+.inbox-mentions-row button {
+  min-height: 28px;
+  border: 1px solid #dfe4ee;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #4b5563;
+  padding: 0 9px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.inbox-label-row button.is-active {
+  border-color: rgba(225, 28, 107, 0.38);
+  background: #fff7fb;
+  color: #be185d;
+}
+
+.inbox-detection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inbox-tool-panel small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .inbox-message-list {
   display: grid;
   gap: 8px;
@@ -2339,11 +2411,86 @@ a {
   white-space: pre-wrap;
 }
 
+.inbox-message small {
+  color: #7c3aed;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .inbox-composer {
   display: grid;
   gap: 10px;
   border-top: 1px solid #e8eaf0;
   padding-top: 12px;
+}
+
+.inbox-suggestion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inbox-suggestion-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 10px;
+  align-items: start;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px;
+}
+
+.inbox-suggestion-list strong {
+  font-size: 12px;
+}
+
+.inbox-suggestion-list p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #374151;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.inbox-template-row {
+  display: grid;
+  grid-template-columns: 18px minmax(160px, 1fr) minmax(150px, 0.8fr) auto;
+}
+
+.inbox-template-row select,
+.inbox-template-row input,
+.inbox-mentions-row select {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.inbox-mentions-row {
+  display: grid;
+  grid-template-columns: 18px minmax(170px, 240px) minmax(0, 1fr);
+}
+
+.inbox-mentions-row > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inbox-mentions-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inbox-assign-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
 }
 
 .inbox-composer textarea {
@@ -2354,6 +2501,262 @@ a {
   padding: 11px 12px;
   color: var(--text);
   resize: vertical;
+}
+
+.competitor-workspace {
+  display: grid;
+  gap: 14px;
+}
+
+.competitor-form-panel {
+  max-width: 1080px;
+  width: 100%;
+}
+
+.competitor-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.toggle-field {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0 11px;
+  color: var(--text);
+  font-weight: 900;
+}
+
+.toggle-field input {
+  width: 16px;
+  height: 16px;
+}
+
+.competitor-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.competitor-list-panel,
+.competitor-profile-panel {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.competitor-card-list {
+  display: grid;
+  gap: 8px;
+}
+
+.competitor-card {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 4px 10px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 11px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.competitor-card.is-active {
+  border-color: rgba(37, 99, 235, 0.34);
+  background: #f8fbff;
+}
+
+.competitor-logo {
+  grid-row: span 5;
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 950;
+}
+
+.competitor-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.competitor-card strong,
+.competitor-card small,
+.competitor-card > span:not(.competitor-logo) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.competitor-card small,
+.competitor-card > span:not(.competitor-logo),
+.competitor-card div small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.competitor-card div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.competitor-card b {
+  color: var(--blue);
+  font-size: 18px;
+}
+
+.competitor-profile-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.competitor-profile-header h3 {
+  margin: 0;
+}
+
+.competitor-section-tabs {
+  overflow-x: auto;
+  justify-content: flex-start;
+}
+
+.competitor-overview-grid,
+.competitor-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.competitor-signal-panel,
+.competitor-ai-grid article {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 12px;
+}
+
+.competitor-signal-panel > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.competitor-signal-panel strong,
+.competitor-ai-grid strong {
+  color: var(--text);
+}
+
+.competitor-signal-panel p,
+.competitor-ai-grid p {
+  margin: 0;
+  color: #374151;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.competitor-signal-panel ul,
+.competitor-ai-grid ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.competitor-benchmark {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.competitor-benchmark article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.competitor-benchmark span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.competitor-timeline {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid #e8eaf0;
+  padding-top: 12px;
+}
+
+.competitor-event {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.competitor-event.opportunity {
+  border-color: #bbf7d0;
+  background: #f7fef9;
+}
+
+.competitor-event.threat,
+.competitor-event.alert {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.competitor-event > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.competitor-event strong {
+  color: var(--text);
+}
+
+.competitor-event p {
+  margin: 4px 0 0;
+  color: #4b5563;
+  line-height: 1.45;
+}
+
+.competitor-event small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .trend-workspace {
@@ -3085,6 +3488,24 @@ a {
   }
 
   .inbox-board {
+    grid-template-columns: 1fr;
+  }
+
+  .competitor-layout,
+  .competitor-form,
+  .competitor-overview-grid,
+  .competitor-ai-grid,
+  .competitor-benchmark {
+    grid-template-columns: 1fr;
+  }
+
+  .competitor-event {
+    grid-template-columns: 1fr;
+  }
+
+  .inbox-assist-grid,
+  .inbox-template-row,
+  .inbox-mentions-row {
     grid-template-columns: 1fr;
   }
 

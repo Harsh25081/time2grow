@@ -10,6 +10,7 @@ import {
   Link2,
   LogOut,
   Menu,
+  Search,
   Send,
   Settings,
   Sparkles,
@@ -33,6 +34,7 @@ const AnalyticsReportingPage = lazy(() => import('../features/analytics/Analytic
 const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
+const CompetitorIntelligencePage = lazy(() => import('../features/competitors/CompetitorIntelligencePage').then((module) => ({ default: module.CompetitorIntelligencePage })));
 const InboxPage = lazy(() => import('../features/inbox/InboxPage').then((module) => ({ default: module.InboxPage })));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage').then((module) => ({ default: module.LeadsPage })));
 const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
@@ -63,6 +65,7 @@ const analyticsNav: NavItem[] = [
   { to: '/analytics', label: 'Overview', icon: BarChart3, end: true },
   { to: '/analytics/reporting', label: 'Reporting Data', icon: CircleDollarSign },
   { to: '/trends', label: 'Trend Radar', icon: TrendingUp },
+  { to: '/competitors', label: 'Competitors', icon: Search },
 ];
 
 const campaignNav: NavItem[] = [
@@ -125,6 +128,12 @@ const modules = [
     description: 'Track market signals and turn rising opportunities into campaigns.',
     status: 'Live',
     color: 'green',
+  },
+  {
+    title: 'Competitor Intelligence',
+    description: 'Monitor competitors, detect threats, and turn gaps into campaigns.',
+    status: 'Live',
+    color: 'blue',
   },
   {
     title: 'Lead CRM',
@@ -289,6 +298,7 @@ export function AppShell() {
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/analytics/reporting" element={<AnalyticsReportingPage />} />
           <Route path="/trends" element={<TrendRadarPage />} />
+          <Route path="/competitors" element={<CompetitorIntelligencePage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/campaigns/content" element={<ContentCreatorPage />} />
           <Route path="/campaigns/posters" element={<PosterStudioAiPage />} />

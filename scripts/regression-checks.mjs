@@ -225,6 +225,21 @@ requirePattern(
   /from\('leads'\)[\s\S]*from\('campaigns'\)[\s\S]*from\('distribution_handles'\)[\s\S]*lead_id[\s\S]*campaign_id[\s\S]*distribution_handle_id/,
 );
 requirePattern(
+  'Inbox assist layer supports templates, labels, assignment, mentions, and lead conversion',
+  'apps/web/src/features/inbox/InboxPage.tsx',
+  /(?=[\s\S]*AI Reply Suggestions)(?=[\s\S]*Saved Templates)(?=[\s\S]*Auto Lead Detection)(?=[\s\S]*Convert to lead)(?=[\s\S]*Assign Conversation)(?=[\s\S]*Internal Mentions)(?=[\s\S]*Conversation Labels)/,
+);
+requirePattern(
+  'Inbox assist schema is org-scoped and role-protected',
+  'supabase/migrations/20260720124500_inbox_assist_layer.sql',
+  /add column if not exists labels[\s\S]*add column if not exists lead_detection[\s\S]*create table if not exists public\.inbox_reply_templates[\s\S]*org_id uuid not null[\s\S]*inbox_reply_templates_select_members[\s\S]*inbox_reply_templates_write_editors/,
+);
+requirePattern(
+  'Inbox AI action analyzes server-loaded conversations',
+  'supabase/functions/ai-handler/index.ts',
+  /analyze_inbox_conversation[\s\S]*from\('inbox_threads'\)[\s\S]*from\('inbox_messages'\)[\s\S]*summarizeBusinessDna[\s\S]*parseInboxAnalysisCompletion/,
+);
+requirePattern(
   'Inbox route is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
   /InboxPage[\s\S]*to="\/inbox"[\s\S]*path="\/inbox"/,
@@ -248,6 +263,26 @@ requirePattern(
   'Trend Radar route is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
   /TrendRadarPage[\s\S]*to: '\/trends'[\s\S]*path="\/trends"/,
+);
+requirePattern(
+  'Competitor Intelligence tables are org-scoped and role-protected',
+  'supabase/migrations/20260720130000_competitor_intelligence.sql',
+  /create table if not exists public\.competitors[\s\S]*org_id uuid not null[\s\S]*create table if not exists public\.competitor_events[\s\S]*competitors_select_members[\s\S]*competitor_events_write_editors/,
+);
+requirePattern(
+  'Competitor Intelligence page supports monitoring, AI strategy, and campaign handoff',
+  'apps/web/src/features/competitors/CompetitorIntelligencePage.tsx',
+  /(?=[\s\S]*from\('competitors'\))(?=[\s\S]*from\('competitor_events'\))(?=[\s\S]*Refresh Now)(?=[\s\S]*Why Are They Winning\?)(?=[\s\S]*Create Campaign)(?=[\s\S]*Opportunity Finder)/,
+);
+requirePattern(
+  'Competitor Intelligence AI action stores strategy and timeline alerts',
+  'supabase/functions/ai-handler/index.ts',
+  /analyze_competitor_intelligence[\s\S]*from\('competitors'\)[\s\S]*parseCompetitorStrategyCompletion[\s\S]*from\('competitor_events'\)/,
+);
+requirePattern(
+  'Competitor Intelligence route is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /CompetitorIntelligencePage[\s\S]*to: '\/competitors'[\s\S]*path="\/competitors"/,
 );
 requirePattern(
   'Social Hub visible label is renamed',

@@ -86,6 +86,34 @@ type ReviewResult = {
     businessDnaUsed: boolean;
   };
 };
+type InboxReplySuggestion = { label: string; body: string };
+type InboxLeadDetection = {
+  detected: boolean;
+  confidence: number;
+  leadType: 'hot' | 'warm' | 'cold';
+  reason: string;
+  recommendedNextStep: string;
+  labels: string[];
+};
+type CompetitorStrategy = {
+  summary: string;
+  recommendations: string[];
+  campaignSuggestions: string[];
+  opportunities: string[];
+  threats: string[];
+  swot: {
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  };
+  whyWinning: {
+    reasons: string[];
+    estimatedImpact: string;
+    recommendedActions: string[];
+  };
+  alerts: Array<{ title: string; details: string; severity: 'info' | 'opportunity' | 'threat' | 'alert'; eventType: 'website' | 'social' | 'content' | 'ads' | 'reviews' | 'offers' | 'seo' | 'analytics' | 'alert' | 'insight' }>;
+};
 
 const DEFAULT_DAILY_ORG_CALL_CAP = 40;
 const DEFAULT_MAX_WEBSITE_BYTES = 512_000;
@@ -133,6 +161,8 @@ const actions: Record<string, ActionHandler> = {
   generate_poster: generatePoster,
   generate_poster_art: generatePosterArt,
   review_asset: reviewAsset,
+  analyze_inbox_conversation: analyzeInboxConversation,
+  analyze_competitor_intelligence: analyzeCompetitorIntelligence,
 };
 
 Deno.serve(async (req) => {
@@ -196,6 +226,183 @@ async function reserveAiUsage(supabase: ServiceClient, orgId: string, userId: st
     throw new HttpError(503, 'AI usage controls are not installed. Apply the latest Supabase migration.');
   }
   throw new HttpError(503, 'Could not reserve AI usage. Try again shortly.');
+}
+
+async function analyzeInboxConversation({ supabase, orgId, payload }: ActionContext) {
+  const threadId = uuidString(payload.threadId);
+  if (!threadId) throw new HttpError(400, 'Choose a conversation first.');
+
+  const { data: thread, error: threadError } = await supabase
+    .from('inbox_threads')
+    .select('id, org_id, client_business_dna_id, campaign_id, lead_id, channel, contact_name, contact_email, contact_phone, status, priority, labels, last_message_preview, last_message_at')
+    .eq('org_id', orgId)
+    .eq('id', threadId)
+    .maybeSingle();
+
+  if (threadError) throw threadError;
+  if (!thread) throw new HttpError(404, 'Conversation was not found in this workspace.');
+
+  const { data: messages, error: messageError } = await supabase
+    .from('inbox_messages')
+    .select('direction, body, sender_name, created_at')
+    .eq('org_id', orgId)
+    .eq('thread_id', threadId)
+    .order('created_at', { ascending: false })
+    .limit(18);
+
+  if (messageError) throw messageError;
+  const orderedMessages = [...(messages ?? [])].reverse();
+  if (orderedMessages.length === 0 && !thread.last_message_preview) {
+    throw new HttpError(400, 'This conversation needs at least one saved message.');
+  }
+
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, limitedString(thread.client_business_dna_id, 80));
+  if (!businessDna) throw new HttpError(400, 'Save Business DNA before using Inbox AI suggestions.');
+
+  const completion = await callOpenAi([
+    {
+      role: 'system',
+      content: [
+        'You are the Inbox assistant for time2grow, a marketing operating system.',
+        'Reply with strict JSON only, no prose, matching this exact shape: {"suggestions":[{"label":string,"body":string}],"leadDetection":{"detected":boolean,"confidence":number,"leadType":"hot|warm|cold","reason":string,"recommendedNextStep":string,"labels":[string]}}.',
+        'Write practical replies that are ready for a human to send. Keep each reply under 90 words.',
+        'Use the Business DNA for tone, positioning, FAQs, offers, products, policies, and sales scripts.',
+        'Never invent discounts, testimonials, guarantees, pricing, contact details, or delivery promises not present in the supplied context.',
+        'Lead detection should be true only when the conversation shows buying intent, contact intent, pricing interest, booking interest, or explicit product/service need.',
+        'Labels must be short lowercase tags such as pricing, follow-up, demo, support, urgent, objection, booking, or lead.',
+      ].join(' '),
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        thread: {
+          channel: limitedString(thread.channel, 40),
+          contactName: limitedString(thread.contact_name, 120),
+          status: limitedString(thread.status, 40),
+          priority: limitedString(thread.priority, 40),
+          existingLabels: Array.isArray(thread.labels) ? thread.labels.slice(0, 12) : [],
+          lastMessagePreview: limitedString(thread.last_message_preview, 500),
+        },
+        messages: orderedMessages.map((message) => ({
+          direction: limitedString(message.direction, 40),
+          sender: limitedString(message.sender_name, 120),
+          body: limitedString(message.body, 1600),
+        })),
+        businessDna: summarizeBusinessDna(businessDna),
+      }),
+    },
+  ], 1000);
+
+  const analysis = parseInboxAnalysisCompletion(completion);
+  const existingLabels = Array.isArray(thread.labels) ? thread.labels : [];
+  const nextLabels = uniqueInboxLabels([...existingLabels, ...analysis.leadDetection.labels, analysis.leadDetection.detected ? 'lead' : '']);
+
+  const { data: updatedThread, error: updateError } = await supabase
+    .from('inbox_threads')
+    .update({
+      labels: nextLabels,
+      lead_detection: analysis.leadDetection,
+      last_ai_suggestions: analysis.suggestions,
+    })
+    .eq('org_id', orgId)
+    .eq('id', threadId)
+    .select('*')
+    .single();
+
+  if (updateError) throw updateError;
+  return { suggestions: analysis.suggestions, leadDetection: analysis.leadDetection, thread: updatedThread };
+}
+
+async function analyzeCompetitorIntelligence({ supabase, orgId, userId, payload }: ActionContext) {
+  const competitorId = uuidString(payload.competitorId);
+  if (!competitorId) throw new HttpError(400, 'Choose a competitor first.');
+
+  const { data: competitor, error: competitorError } = await supabase
+    .from('competitors')
+    .select('*')
+    .eq('org_id', orgId)
+    .eq('id', competitorId)
+    .maybeSingle();
+
+  if (competitorError) throw competitorError;
+  if (!competitor) throw new HttpError(404, 'Competitor was not found in this workspace.');
+
+  const businessDna = await loadEffectiveBusinessDna(supabase, orgId, limitedString(competitor.client_business_dna_id, 80));
+  if (!businessDna) throw new HttpError(400, 'Save Business DNA before running Competitor Intelligence.');
+
+  const completion = await callOpenAi([
+    {
+      role: 'system',
+      content: [
+        'You are Maya, the strategy assistant inside time2grow/GrowthMate One.',
+        'Analyze a competitor from public-signal notes saved by the user. Reply with strict JSON only, no prose, matching this exact shape: {"summary":string,"recommendations":[string],"campaignSuggestions":[string],"opportunities":[string],"threats":[string],"swot":{"strengths":[string],"weaknesses":[string],"opportunities":[string],"threats":[string]},"whyWinning":{"reasons":[string],"estimatedImpact":string,"recommendedActions":[string]},"alerts":[{"title":string,"details":string,"severity":"info|opportunity|threat|alert","eventType":"website|social|content|ads|reviews|offers|seo|analytics|alert|insight"}]}.',
+        'Do not invent exact metrics, rankings, ad status, reviews, or discounts. Use only supplied competitor signals and Business DNA.',
+        'When information is missing, frame it as a monitoring gap or suggested next check.',
+        'Make recommendations actionable: content, offer, reviews, SEO, ads, response speed, and campaign angles.',
+        'Keep arrays compact: 3-5 recommendations, 2-4 campaign suggestions, 3-5 opportunities, 2-4 threats, 3-5 why-winning reasons, and up to 5 alerts.',
+      ].join(' '),
+    },
+    {
+      role: 'user',
+      content: JSON.stringify({
+        competitor: {
+          name: limitedString(competitor.name, 160),
+          industry: limitedString(competitor.industry, 160),
+          websiteUrl: limitedString(competitor.website_url, 500),
+          socialAccounts: safeRecord(competitor.social_accounts),
+          activityScore: typeof competitor.activity_score === 'number' ? competitor.activity_score : 0,
+          trend: limitedString(competitor.trend, 40),
+          googleRating: competitor.google_rating,
+          runningAds: Boolean(competitor.running_ads),
+          website: safeRecord(competitor.website_snapshot),
+          social: safeRecord(competitor.social_snapshot),
+          content: safeRecord(competitor.content_snapshot),
+          ads: safeRecord(competitor.ads_snapshot),
+          reviews: safeRecord(competitor.review_snapshot),
+          offers: safeRecord(competitor.offer_snapshot),
+          seo: safeRecord(competitor.seo_snapshot),
+          analytics: safeRecord(competitor.analytics_snapshot),
+        },
+        businessDna: summarizeBusinessDna(businessDna),
+      }),
+    },
+  ], 1400);
+
+  const strategy = parseCompetitorStrategyCompletion(completion);
+  const now = new Date().toISOString();
+  const { data: updated, error: updateError } = await supabase
+    .from('competitors')
+    .update({
+      ai_insights: strategy,
+      swot: strategy.swot,
+      why_winning: strategy.whyWinning,
+      last_refreshed_at: now,
+    })
+    .eq('org_id', orgId)
+    .eq('id', competitorId)
+    .select('*')
+    .single();
+
+  if (updateError) throw updateError;
+
+  if (strategy.alerts.length > 0) {
+    const { error: eventError } = await supabase
+      .from('competitor_events')
+      .insert(strategy.alerts.map((alert) => ({
+        org_id: orgId,
+        competitor_id: competitorId,
+        event_type: alert.eventType,
+        severity: alert.severity,
+        title: alert.title,
+        details: alert.details,
+        event_at: now,
+        metadata: { source: 'maya_competitor_analysis' },
+        created_by: userId,
+      })));
+    if (eventError) throw eventError;
+  }
+
+  return { competitor: updated, strategy };
 }
 
 async function extractDna({ supabase, orgId, userId, payload }: ActionContext) {
@@ -1354,6 +1561,120 @@ function targetLabel(target: PostTarget) {
     blog: 'Blog',
     community: 'Community',
   }[target];
+}
+
+function parseInboxAnalysisCompletion(raw: string): { suggestions: InboxReplySuggestion[]; leadDetection: InboxLeadDetection } {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The Inbox AI response could not be read. Try again.');
+  }
+
+  const suggestions = Array.isArray(parsed.suggestions)
+    ? parsed.suggestions
+        .map((suggestion) => normalizeInboxSuggestion(suggestion))
+        .filter((suggestion): suggestion is InboxReplySuggestion => Boolean(suggestion))
+        .slice(0, 3)
+    : [];
+  if (suggestions.length === 0) throw new HttpError(502, 'Inbox AI did not return usable reply suggestions.');
+
+  const detectionRecord = safeRecord(parsed.leadDetection);
+  const confidence = clampScore(detectionRecord.confidence);
+  const leadDetection: InboxLeadDetection = {
+    detected: typeof detectionRecord.detected === 'boolean' ? detectionRecord.detected : confidence >= 55,
+    confidence,
+    leadType: enumString<InboxLeadDetection['leadType']>(detectionRecord.leadType, ['hot', 'warm', 'cold'], confidence >= 75 ? 'hot' : confidence >= 45 ? 'warm' : 'cold'),
+    reason: limitedString(detectionRecord.reason, 260) || 'Conversation reviewed.',
+    recommendedNextStep: limitedString(detectionRecord.recommendedNextStep, 180) || 'Reply and qualify the next step.',
+    labels: uniqueInboxLabels(Array.isArray(detectionRecord.labels) ? detectionRecord.labels.map((label) => limitedString(label, 32)) : []),
+  };
+
+  return { suggestions, leadDetection };
+}
+
+function normalizeInboxSuggestion(value: unknown) {
+  const record = safeRecord(value);
+  const label = limitedString(record.label, 60);
+  const body = limitedString(record.body, 900);
+  if (!label || !body) return null;
+  return { label, body };
+}
+
+function uniqueInboxLabels(values: string[]) {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+
+  for (const value of values) {
+    const label = value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9 -]/g, '')
+      .replace(/\s+/g, '-')
+      .slice(0, 24);
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    labels.push(label);
+    if (labels.length >= 8) break;
+  }
+
+  return labels;
+}
+
+function parseCompetitorStrategyCompletion(raw: string): CompetitorStrategy {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new HttpError(502, 'The competitor analysis response could not be read. Try again.');
+  }
+
+  const swotRecord = safeRecord(parsed.swot);
+  const whyRecord = safeRecord(parsed.whyWinning);
+  const alerts = Array.isArray(parsed.alerts)
+    ? parsed.alerts
+        .map((alert) => normalizeCompetitorAlert(alert))
+        .filter((alert): alert is CompetitorStrategy['alerts'][number] => Boolean(alert))
+        .slice(0, 5)
+    : [];
+
+  return {
+    summary: limitedString(parsed.summary, 700) || 'Competitor analysis updated.',
+    recommendations: limitedStringArray(parsed.recommendations, 5, 220),
+    campaignSuggestions: limitedStringArray(parsed.campaignSuggestions, 4, 180),
+    opportunities: limitedStringArray(parsed.opportunities, 5, 220),
+    threats: limitedStringArray(parsed.threats, 4, 220),
+    swot: {
+      strengths: limitedStringArray(swotRecord.strengths, 5, 160),
+      weaknesses: limitedStringArray(swotRecord.weaknesses, 5, 160),
+      opportunities: limitedStringArray(swotRecord.opportunities, 5, 160),
+      threats: limitedStringArray(swotRecord.threats, 5, 160),
+    },
+    whyWinning: {
+      reasons: limitedStringArray(whyRecord.reasons, 5, 220),
+      estimatedImpact: limitedString(whyRecord.estimatedImpact, 160) || 'Impact depends on current market response.',
+      recommendedActions: limitedStringArray(whyRecord.recommendedActions, 5, 220),
+    },
+    alerts,
+  };
+}
+
+function normalizeCompetitorAlert(value: unknown) {
+  const record = safeRecord(value);
+  const title = limitedString(record.title, 120);
+  if (!title) return null;
+  return {
+    title,
+    details: limitedString(record.details, 280),
+    severity: enumString<CompetitorStrategy['alerts'][number]['severity']>(record.severity, ['info', 'opportunity', 'threat', 'alert'], 'info'),
+    eventType: enumString<CompetitorStrategy['alerts'][number]['eventType']>(record.eventType, ['website', 'social', 'content', 'ads', 'reviews', 'offers', 'seo', 'analytics', 'alert', 'insight'], 'insight'),
+  };
+}
+
+function limitedStringArray(value: unknown, maxItems: number, maxLength: number) {
+  return Array.isArray(value)
+    ? value.map((item) => limitedString(item, maxLength)).filter(Boolean).slice(0, maxItems)
+    : [];
 }
 
 function enumString<T extends string>(value: unknown, allowed: T[], fallback: T) {

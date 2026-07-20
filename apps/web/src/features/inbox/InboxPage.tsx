@@ -1,8 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Archive, CheckCircle2, Inbox, Loader2, MessageSquareReply, Plus, Save, Send, UserPlus, X } from 'lucide-react';
+import { Archive, AtSign, BookOpen, Bot, CheckCircle2, Inbox, Loader2, MessageSquareReply, Plus, Save, Send, Sparkles, Tags, UserPlus, Users, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import type { Database, Json } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
+import { edgeFunctionErrorMessage } from '../business-dna/edgeError';
 import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 
 type InboxThreadRow = Database['public']['Tables']['inbox_threads']['Row'];
@@ -11,10 +12,23 @@ type InboxThreadStatus = InboxThreadRow['status'];
 type InboxPriority = InboxThreadRow['priority'];
 type InboxChannel = InboxThreadRow['channel'];
 type MessageDirection = InboxMessageRow['direction'];
+type ReplyTemplateRow = Database['public']['Tables']['inbox_reply_templates']['Row'];
 type LeadRow = Pick<Database['public']['Tables']['leads']['Row'], 'id' | 'full_name' | 'company' | 'email' | 'phone' | 'status' | 'client_business_dna_id' | 'campaign_id'>;
 type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
 type HandleRow = Pick<Database['public']['Tables']['distribution_handles']['Row'], 'id' | 'provider' | 'display_name' | 'is_enabled'>;
+type MembershipRow = Pick<Database['public']['Tables']['organization_memberships']['Row'], 'user_id' | 'role'>;
+type ProfileRow = Pick<Database['public']['Tables']['profiles']['Row'], 'id' | 'full_name'>;
 type InboxFilter = 'all' | InboxThreadStatus;
+type WorkspaceMember = { userId: string; name: string; role: MembershipRow['role'] };
+type ReplySuggestion = { label: string; body: string };
+type LeadDetection = {
+  detected: boolean;
+  confidence: number;
+  leadType: 'hot' | 'warm' | 'cold';
+  reason: string;
+  recommendedNextStep: string;
+  labels: string[];
+};
 
 type ThreadForm = {
   brandSelectionId: string;
@@ -81,6 +95,17 @@ const priorityOptions: Array<{ value: InboxPriority; label: string }> = [
   { value: 'high', label: 'High' },
 ];
 
+const labelOptions = ['pricing', 'follow-up', 'demo', 'support', 'urgent', 'objection', 'booking', 'lead'] as const;
+
+const emptyLeadDetection: LeadDetection = {
+  detected: false,
+  confidence: 0,
+  leadType: 'warm',
+  reason: 'No AI lead signal saved yet.',
+  recommendedNextStep: 'Run detection when a customer message shows interest.',
+  labels: [],
+};
+
 export function InboxPage() {
   const { organization, user, membership } = useAuth();
   const [threads, setThreads] = useState<InboxThreadRow[]>([]);
@@ -88,6 +113,8 @@ export function InboxPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [handles, setHandles] = useState<HandleRow[]>([]);
+  const [templates, setTemplates] = useState<ReplyTemplateRow[]>([]);
+  const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [form, setForm] = useState<ThreadForm>(emptyForm);
   const [selectedBrandId, setSelectedBrandId] = useState(SELF_BRAND_ID);
   const [selectedThreadId, setSelectedThreadId] = useState('');
@@ -95,9 +122,13 @@ export function InboxPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [replyBody, setReplyBody] = useState('');
   const [replyMode, setReplyMode] = useState<MessageDirection>('outbound');
+  const [templateTitle, setTemplateTitle] = useState('');
+  const [internalMentionIds, setInternalMentionIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -109,6 +140,7 @@ export function InboxPage() {
   const leadById = useMemo(() => new Map(leads.map((lead) => [lead.id, lead])), [leads]);
   const campaignById = useMemo(() => new Map(campaigns.map((campaign) => [campaign.id, campaign])), [campaigns]);
   const handleById = useMemo(() => new Map(handles.map((handle) => [handle.id, handle])), [handles]);
+  const memberById = useMemo(() => new Map(members.map((member) => [member.userId, member])), [members]);
 
   useEffect(() => {
     let active = true;
@@ -122,6 +154,8 @@ export function InboxPage() {
         setLeads([]);
         setCampaigns([]);
         setHandles([]);
+        setTemplates([]);
+        setMembers([]);
         setLoading(false);
         return;
       }
@@ -131,6 +165,8 @@ export function InboxPage() {
         { data: leadData, error: leadError },
         { data: campaignData, error: campaignError },
         { data: handleData, error: handleError },
+        { data: templateData, error: templateError },
+        { data: memberData, error: memberError },
       ] = await Promise.all([
         supabase
           .from('inbox_threads')
@@ -158,17 +194,45 @@ export function InboxPage() {
           .eq('org_id', organization.id)
           .eq('is_enabled', true)
           .order('updated_at', { ascending: false }),
+        supabase
+          .from('inbox_reply_templates')
+          .select('*')
+          .eq('org_id', organization.id)
+          .eq('status', 'active')
+          .order('updated_at', { ascending: false })
+          .limit(80),
+        supabase
+          .from('organization_memberships')
+          .select('user_id, role')
+          .eq('org_id', organization.id)
+          .eq('status', 'active')
+          .order('created_at', { ascending: true }),
       ]);
+
+      const memberIds = (memberData ?? []).map((member) => member.user_id);
+      const { data: profileData, error: profileError } = memberIds.length > 0
+        ? await supabase.from('profiles').select('id, full_name').in('id', memberIds)
+        : { data: [] as ProfileRow[], error: null };
 
       if (!active) return;
       if (threadError) setError(errorMessage(threadError, 'Could not load inbox conversations.'));
       if (leadError) setError(errorMessage(leadError, 'Could not load leads.'));
       if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
       if (handleError) setError(errorMessage(handleError, 'Could not load connected handles.'));
+      if (templateError) setError(errorMessage(templateError, 'Could not load saved templates.'));
+      if (memberError) setError(errorMessage(memberError, 'Could not load workspace members.'));
+      if (profileError) setError(errorMessage(profileError, 'Could not load teammate names.'));
+      const profileById = new Map((profileData ?? []).map((profile) => [profile.id, profile.full_name]));
       setThreads(threadData ?? []);
       setLeads(leadData ?? []);
       setCampaigns(campaignData ?? []);
       setHandles(handleData ?? []);
+      setTemplates(templateData ?? []);
+      setMembers((memberData ?? []).map((member) => ({
+        userId: member.user_id,
+        role: member.role,
+        name: profileById.get(member.user_id) || (member.user_id === user?.id ? 'You' : 'Workspace member'),
+      })));
       setLoading(false);
     }
 
@@ -176,7 +240,7 @@ export function InboxPage() {
     return () => {
       active = false;
     };
-  }, [organization?.id]);
+  }, [organization?.id, user?.id]);
 
   const visibleThreads = useMemo(() => {
     return threads.filter((thread) => {
@@ -191,6 +255,16 @@ export function InboxPage() {
     () => threads.find((thread) => thread.id === selectedThreadId) ?? visibleThreads[0] ?? null,
     [selectedThreadId, threads, visibleThreads],
   );
+  const selectedLeadDetection = useMemo(() => parseLeadDetection(selectedThread?.lead_detection), [selectedThread?.lead_detection]);
+  const selectedReplySuggestions = useMemo(() => parseReplySuggestions(selectedThread?.last_ai_suggestions), [selectedThread?.last_ai_suggestions]);
+  const selectedLabels = selectedThread?.labels ?? [];
+  const matchingTemplates = useMemo(() => {
+    if (!selectedThread) return templates;
+    return templates.filter((template) => {
+      if (template.channel !== 'any' && template.channel !== selectedThread.channel) return false;
+      return rowMatchesBrand(template.client_business_dna_id, isAgency, selectedThread.client_business_dna_id ?? SELF_BRAND_ID);
+    });
+  }, [isAgency, selectedThread, templates]);
 
   useEffect(() => {
     if (!selectedThread) {
@@ -366,6 +440,7 @@ export function InboxPage() {
     setError('');
 
     const now = new Date().toISOString();
+    const noteMentions = replyMode === 'internal' ? internalMentionIds : [];
     try {
       const { data: inserted, error: insertError } = await supabase
         .from('inbox_messages')
@@ -376,7 +451,7 @@ export function InboxPage() {
           body,
           sender_name: replyMode === 'inbound' ? selectedThread.contact_name : organization.name,
           sender_handle: replyMode === 'internal' ? null : selectedThread.channel,
-          metadata: { source: 'workspace_inbox' } satisfies Json,
+          metadata: { source: 'workspace_inbox', mentions: noteMentions } satisfies Json,
           created_by: user.id,
         })
         .select('*')
@@ -400,6 +475,7 @@ export function InboxPage() {
       setMessages((current) => [...current, inserted]);
       setThreads((current) => sortThreads(current.map((thread) => (thread.id === updatedThread.id ? updatedThread : thread))));
       setReplyBody('');
+      setInternalMentionIds([]);
       setMessage(replyMode === 'internal' ? 'Note saved.' : 'Reply saved.');
     } catch (replyError) {
       setError(errorMessage(replyError, 'Could not save this message.'));
@@ -431,6 +507,103 @@ export function InboxPage() {
     }
   }
 
+  async function runInboxAi() {
+    if (!supabase || !organization?.id || !selectedThread) return;
+    if (!canWrite) {
+      setError('Ask an owner, admin, or editor to use Inbox AI.');
+      return;
+    }
+
+    setAiLoading(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('ai-handler', {
+        body: { action: 'analyze_inbox_conversation', orgId: organization.id, threadId: selectedThread.id },
+      });
+      if (invokeError) throw new Error(await edgeFunctionErrorMessage(invokeError, 'ai-handler'));
+      const result = normalizeInboxAiResult(data);
+      setThreads((current) => sortThreads(current.map((thread) => (thread.id === result.thread.id ? result.thread : thread))));
+      setMessage(result.leadDetection.detected ? 'AI suggestions ready. Lead signal detected.' : 'AI suggestions ready.');
+    } catch (aiError) {
+      setError(errorMessage(aiError, 'Could not generate Inbox AI suggestions.'));
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  async function saveTemplateFromReply() {
+    if (!supabase || !organization?.id || !user?.id || !selectedThread) return;
+    if (!canWrite) return;
+
+    const body = replyBody.trim();
+    if (!body) {
+      setError('Write the template body first.');
+      return;
+    }
+
+    const title = templateTitle.trim() || body.split(/\s+/).slice(0, 6).join(' ');
+    setTemplateSaving(true);
+    setMessage('');
+    setError('');
+
+    try {
+      const { data, error: templateError } = await supabase
+        .from('inbox_reply_templates')
+        .insert({
+          org_id: organization.id,
+          client_business_dna_id: selectedThread.client_business_dna_id,
+          title: title.slice(0, 90),
+          body,
+          channel: selectedThread.channel,
+          metadata: { source: 'inbox_composer' } satisfies Json,
+          created_by: user.id,
+        })
+        .select('*')
+        .single();
+      if (templateError) throw templateError;
+
+      setTemplates((current) => [data, ...current]);
+      setTemplateTitle('');
+      setMessage('Template saved.');
+    } catch (templateError) {
+      setError(errorMessage(templateError, 'Could not save this template.'));
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  function applyTemplate(templateId: string) {
+    const template = templates.find((item) => item.id === templateId);
+    if (!template) return;
+    setReplyBody(template.body);
+    setReplyMode('outbound');
+    setMessage('Template applied.');
+  }
+
+  function applySuggestion(suggestion: ReplySuggestion) {
+    setReplyBody(suggestion.body);
+    setReplyMode('outbound');
+  }
+
+  function addMention(userId: string) {
+    if (!userId) return;
+    setInternalMentionIds((current) => current.includes(userId) ? current : [...current, userId]);
+  }
+
+  function removeMention(userId: string) {
+    setInternalMentionIds((current) => current.filter((id) => id !== userId));
+  }
+
+  function toggleLabel(label: string) {
+    if (!selectedThread) return;
+    const nextLabels = selectedLabels.includes(label)
+      ? selectedLabels.filter((item) => item !== label)
+      : [...selectedLabels, label];
+    void patchThread(selectedThread, { labels: nextLabels });
+  }
+
   async function createLeadFromThread() {
     if (!supabase || !organization?.id || !user?.id || !selectedThread) return;
     if (!canWrite) return;
@@ -451,9 +624,10 @@ export function InboxPage() {
           phone: selectedThread.contact_phone,
           source: channelToLeadSource(selectedThread.channel),
           status: 'new',
-          lead_score: selectedThread.priority === 'high' ? 70 : 35,
-          notes: selectedThread.last_message_preview,
-          metadata: { inboxThreadId: selectedThread.id } satisfies Json,
+          lead_type: selectedLeadDetection.leadType,
+          lead_score: selectedLeadDetection.confidence || (selectedThread.priority === 'high' ? 70 : 35),
+          notes: [selectedThread.last_message_preview, selectedLeadDetection.reason].filter(Boolean).join('\n\n'),
+          metadata: { inboxThreadId: selectedThread.id, leadDetection: selectedLeadDetection, labels: selectedLabels } satisfies Json,
           created_by: user.id,
         })
         .select('id, full_name, company, email, phone, status, client_business_dna_id, campaign_id')
@@ -641,6 +815,7 @@ export function InboxPage() {
               <div className="inbox-thread-list">
                 {visibleThreads.length > 0 ? visibleThreads.map((thread) => {
                   const lead = thread.lead_id ? leadById.get(thread.lead_id) : null;
+                  const assigned = thread.assigned_to ? memberById.get(thread.assigned_to)?.name ?? 'Assigned' : null;
                   return (
                     <button
                       type="button"
@@ -651,7 +826,10 @@ export function InboxPage() {
                       <span className={`inbox-priority ${thread.priority}`}>{priorityLabel(thread.priority)}</span>
                       <strong>{thread.contact_name}</strong>
                       <small>{thread.last_message_preview || 'No message preview'}</small>
-                      <span>{[channelLabel(thread.channel), statusLabel(thread.status), lead ? 'Lead linked' : null].filter(Boolean).join(' - ')}</span>
+                      <span>{[channelLabel(thread.channel), statusLabel(thread.status), assigned, lead ? 'Lead linked' : null].filter(Boolean).join(' - ')}</span>
+                      {thread.labels.length > 0 ? (
+                        <span className="inbox-thread-labels">{thread.labels.slice(0, 3).map((label) => `#${label}`).join(' ')}</span>
+                      ) : null}
                     </button>
                   );
                 }) : (
@@ -676,6 +854,7 @@ export function InboxPage() {
                         {isAgency ? <span>{selectedThread.client_business_dna_id ? clientNameById.get(selectedThread.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
                         {selectedThread.campaign_id ? <span>{campaignById.get(selectedThread.campaign_id)?.name ?? 'Campaign'}</span> : null}
                         {selectedThread.distribution_handle_id ? <span>{handleById.get(selectedThread.distribution_handle_id)?.display_name ?? 'Connected handle'}</span> : null}
+                        {selectedThread.assigned_to ? <span>Assigned to {memberById.get(selectedThread.assigned_to)?.name ?? 'Workspace member'}</span> : null}
                       </div>
                     </div>
                     {canWrite ? (
@@ -683,9 +862,16 @@ export function InboxPage() {
                         {!selectedThread.lead_id ? (
                           <button type="button" className="icon-text-button" onClick={createLeadFromThread} disabled={saving}>
                             <UserPlus size={16} />
-                            <span>Create lead</span>
+                            <span>Convert to lead</span>
                           </button>
                         ) : null}
+                        <label className="task-status-select inbox-assign-select" title="Assign Conversation">
+                          <Users size={14} />
+                          <select value={selectedThread.assigned_to ?? ''} disabled={updatingId === selectedThread.id} onChange={(event) => patchThread(selectedThread, { assigned_to: event.target.value || null })}>
+                            <option value="">Unassigned</option>
+                            {members.map((member) => <option key={member.userId} value={member.userId}>{member.name}</option>)}
+                          </select>
+                        </label>
                         <label className="task-status-select">
                           <select value={selectedThread.status} disabled={updatingId === selectedThread.id} onChange={(event) => patchThread(selectedThread, { status: event.target.value as InboxThreadStatus })}>
                             {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
@@ -709,6 +895,44 @@ export function InboxPage() {
                     <span>Last message {formatDateTime(selectedThread.last_message_at)}</span>
                   </div>
 
+                  <section className="inbox-assist-grid" aria-label="Inbox conversation tools">
+                    <div className="inbox-tool-panel">
+                      <div className="inbox-tool-heading">
+                        <Tags size={16} />
+                        <span>Conversation Labels</span>
+                      </div>
+                      <div className="inbox-label-row">
+                        {labelOptions.map((label) => (
+                          <button
+                            key={label}
+                            type="button"
+                            className={selectedLabels.includes(label) ? 'is-active' : ''}
+                            onClick={() => toggleLabel(label)}
+                            disabled={!canWrite || updatingId === selectedThread.id}
+                          >
+                            #{label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="inbox-tool-panel">
+                      <div className="inbox-tool-heading">
+                        <Bot size={16} />
+                        <span>Auto Lead Detection</span>
+                      </div>
+                      <div className="inbox-detection-row">
+                        <strong>{selectedLeadDetection.detected ? `${leadTypeLabel(selectedLeadDetection.leadType)} lead` : 'No lead signal yet'}</strong>
+                        <span>{selectedLeadDetection.confidence}%</span>
+                      </div>
+                      <small>{selectedLeadDetection.reason}</small>
+                      <button type="button" className="icon-text-button" onClick={runInboxAi} disabled={!canWrite || aiLoading}>
+                        {aiLoading ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />}
+                        <span>{aiLoading ? 'Checking' : 'AI Reply Suggestions'}</span>
+                      </button>
+                    </div>
+                  </section>
+
                   <div className="inbox-message-list" aria-label="Conversation messages">
                     {messagesLoading ? (
                       <div className="queue-empty">
@@ -722,6 +946,9 @@ export function InboxPage() {
                           <span>{formatDateTime(item.created_at)}</span>
                         </div>
                         <p>{item.body}</p>
+                        {mentionNames(item.metadata, memberById).length > 0 ? (
+                          <small>Mentioned {mentionNames(item.metadata, memberById).join(', ')}</small>
+                        ) : null}
                       </article>
                     )) : (
                       <div className="queue-empty">
@@ -744,6 +971,54 @@ export function InboxPage() {
                           <span>Inbound</span>
                         </button>
                       </div>
+
+                      {selectedReplySuggestions.length > 0 ? (
+                        <section className="inbox-suggestion-list" aria-label="AI Reply Suggestions">
+                          {selectedReplySuggestions.map((suggestion) => (
+                            <article key={`${suggestion.label}-${suggestion.body.slice(0, 16)}`}>
+                              <strong>{suggestion.label}</strong>
+                              <p>{suggestion.body}</p>
+                              <button type="button" className="icon-text-button" onClick={() => applySuggestion(suggestion)}>
+                                <Send size={15} />
+                                <span>Use</span>
+                              </button>
+                            </article>
+                          ))}
+                        </section>
+                      ) : null}
+
+                      <div className="inbox-template-row" aria-label="Saved Templates">
+                        <BookOpen size={16} />
+                        <select value="" onChange={(event) => applyTemplate(event.target.value)}>
+                          <option value="">Saved Templates</option>
+                          {matchingTemplates.map((template) => (
+                            <option key={template.id} value={template.id}>{template.title}</option>
+                          ))}
+                        </select>
+                        <input value={templateTitle} onChange={(event) => setTemplateTitle(event.target.value)} placeholder="Template name" />
+                        <button type="button" className="icon-text-button" onClick={saveTemplateFromReply} disabled={templateSaving || !replyBody.trim()}>
+                          {templateSaving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}
+                          <span>Save</span>
+                        </button>
+                      </div>
+
+                      {replyMode === 'internal' ? (
+                        <div className="inbox-mentions-row" aria-label="Internal Mentions">
+                          <AtSign size={16} />
+                          <select value="" onChange={(event) => addMention(event.target.value)}>
+                            <option value="">Internal Mentions</option>
+                            {members.map((member) => <option key={member.userId} value={member.userId}>{member.name}</option>)}
+                          </select>
+                          <div>
+                            {internalMentionIds.map((id) => (
+                              <button key={id} type="button" onClick={() => removeMention(id)}>
+                                @{memberById.get(id)?.name ?? 'Member'} <X size={12} />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       <textarea value={replyBody} onChange={(event) => setReplyBody(event.target.value)} rows={3} placeholder="Write the next reply or internal note" />
                       <button type="button" className="primary-action" onClick={saveReply} disabled={saving}>
                         {saving ? <Loader2 className="spin" size={18} /> : <Send size={18} />}
@@ -785,8 +1060,77 @@ function channelToLeadSource(channel: InboxChannel): Database['public']['Tables'
   if (channel === 'whatsapp') return 'whatsapp';
   if (channel === 'website' || channel === 'email') return 'website';
   if (channel === 'google_ads') return 'ads';
-  if (['facebook', 'instagram', 'linkedin', 'youtube', 'slack', 'telegram'].includes(channel)) return 'social';
+  if (channel === 'facebook') return 'facebook';
+  if (channel === 'instagram') return 'instagram';
+  if (['linkedin', 'youtube', 'slack', 'telegram'].includes(channel)) return 'social';
   return 'other';
+}
+
+function parseLeadDetection(value: Json | undefined): LeadDetection {
+  const record = safeRecord(value);
+  const confidence = clampPercent(record.confidence);
+  const rawLeadType = typeof record.leadType === 'string' ? record.leadType : '';
+  const leadType: LeadDetection['leadType'] = rawLeadType === 'hot' || rawLeadType === 'warm' || rawLeadType === 'cold'
+    ? rawLeadType
+    : confidence >= 75 ? 'hot' : confidence >= 45 ? 'warm' : 'cold';
+
+  return {
+    detected: typeof record.detected === 'boolean' ? record.detected : confidence >= 55,
+    confidence,
+    leadType,
+    reason: typeof record.reason === 'string' && record.reason.trim() ? record.reason : emptyLeadDetection.reason,
+    recommendedNextStep: typeof record.recommendedNextStep === 'string' && record.recommendedNextStep.trim() ? record.recommendedNextStep : emptyLeadDetection.recommendedNextStep,
+    labels: Array.isArray(record.labels) ? record.labels.filter((label): label is string => typeof label === 'string') : [],
+  };
+}
+
+function parseReplySuggestions(value: Json | undefined): ReplySuggestion[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const record = safeRecord(item);
+      return typeof record.label === 'string' && typeof record.body === 'string'
+        ? { label: record.label, body: record.body }
+        : null;
+    })
+    .filter((item): item is ReplySuggestion => Boolean(item))
+    .slice(0, 3);
+}
+
+function normalizeInboxAiResult(value: unknown): { thread: InboxThreadRow; suggestions: ReplySuggestion[]; leadDetection: LeadDetection } {
+  const record = safeRecord(value as Json);
+  const thread = record.thread as InboxThreadRow | undefined;
+  if (!thread?.id) throw new Error('Inbox AI did not return the updated conversation.');
+  return {
+    thread,
+    suggestions: parseReplySuggestions(record.suggestions as Json),
+    leadDetection: parseLeadDetection(record.leadDetection as Json),
+  };
+}
+
+function mentionNames(value: Json, memberById: Map<string, WorkspaceMember>) {
+  const record = safeRecord(value);
+  const mentions = Array.isArray(record.mentions) ? record.mentions : [];
+  return mentions
+    .filter((id): id is string => typeof id === 'string')
+    .map((id) => memberById.get(id)?.name)
+    .filter((name): name is string => Boolean(name));
+}
+
+function safeRecord(value: Json | undefined): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function clampPercent(value: unknown) {
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.min(100, Math.max(0, Math.round(number)));
+}
+
+function leadTypeLabel(value: LeadDetection['leadType']) {
+  if (value === 'hot') return 'Hot';
+  if (value === 'cold') return 'Cold';
+  return 'Warm';
 }
 
 function channelLabel(value: InboxChannel) {
