@@ -1,27 +1,24 @@
 import { lazy, type ReactNode, Suspense, useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
-  Bell,
   Bot,
-  Building2,
   CalendarDays,
-  CircleDollarSign,
-  CreditCard,
   Dna,
   Home,
   Inbox,
-  Link2,
   Loader2,
   LogOut,
+  Megaphone,
   Menu,
+  MessageCircle,
+  Palette,
+  PenLine,
   Search,
   Send,
   Settings,
-  ShieldCheck,
   Sparkles,
   Target,
   TrendingUp,
-  UsersRound,
   X,
 } from 'lucide-react';
 import { Link, Navigate, NavLink, Route, Routes } from 'react-router-dom';
@@ -67,52 +64,28 @@ type NavItem = {
   end?: boolean;
 };
 
-const workspaceNav: NavItem[] = [
+const appNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home, end: true },
   { to: '/business-dna', label: 'Business DNA', icon: Dna },
-];
-
-const analyticsNav: NavItem[] = [
-  { to: '/analytics', label: 'Overview', icon: BarChart3, end: true },
-  { to: '/analytics/reporting', label: 'Reporting Data', icon: CircleDollarSign },
-  { to: '/trends', label: 'Trend Radar', icon: TrendingUp },
-  { to: '/competitors', label: 'Competitors', icon: Search },
-];
-
-const campaignNav: NavItem[] = [
-  { to: '/campaigns/content', label: 'Content', icon: Sparkles },
-  { to: '/campaigns/posters', label: 'AI Posters', icon: Sparkles },
-  { to: '/campaigns/tasks', label: 'Tasks', icon: CalendarDays },
-  { to: '/campaigns/social', label: 'Distribution', icon: Send },
-];
-
-const settingsNav: NavItem[] = [
-  { to: '/settings', label: 'Overview', icon: Settings, end: true },
-  { to: '/settings/connections', label: 'Connections', icon: Link2 },
-  { to: '/settings/team', label: 'Team', icon: UsersRound },
-  { to: '/settings/workspace', label: 'Workspace', icon: Building2 },
-  { to: '/settings/billing', label: 'Billing', icon: CreditCard },
-  { to: '/settings/notifications', label: 'Notifications', icon: Bell },
-  { to: '/settings/security', label: 'Security', icon: ShieldCheck },
-];
-
-const laterNav: NavItem[] = [
+  { to: '/campaigns', label: 'Campaigns', icon: Megaphone, end: true },
+  { to: '/campaigns/content', label: 'Content Studio', icon: PenLine },
+  { to: '/campaigns/posters', label: 'Poster Studio', icon: Palette },
+  { to: '/campaigns/social', label: 'Distribution Hub', icon: Send },
+  { to: '/inbox', label: 'Unified Inbox', icon: MessageCircle },
   { to: '/leads', label: 'Leads', icon: Target },
-  { to: '/inbox', label: 'Inbox', icon: Inbox },
+  { to: '/trends', label: 'Trend Radar', icon: TrendingUp },
+  { to: '/competitors', label: 'Competitor Intelligence', icon: Search },
+  { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 const mobilePrimaryNav: NavItem[] = [
   { to: '/', label: 'Home', icon: Home, end: true },
-  { to: '/business-dna', label: 'Business DNA', icon: Dna },
-  { to: '/campaigns', label: 'Campaigns', icon: Target },
+  { to: '/campaigns', label: 'Campaigns', icon: Megaphone, end: true },
+  { to: '/inbox', label: 'Inbox', icon: MessageCircle },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
-const mobileMoreNav: NavItem[] = [
-  ...analyticsNav,
-  ...campaignNav,
-  ...settingsNav,
-  ...laterNav,
-];
+const mobileMoreNav: NavItem[] = appNav.filter((item) => !mobilePrimaryNav.some((primary) => primary.to === item.to));
 
 export function AppShell() {
   const { profile, organization, membership, signOut, configured } = useAuth();
@@ -180,62 +153,12 @@ export function AppShell() {
         </div>
 
         <nav className="desktop-nav">
-          {workspaceNav.map((item) => (
+          {appNav.map((item) => (
             <NavLink key={item.to} to={item.to} end={item.end} className="nav-item">
               <item.icon size={19} />
               <span>{item.label}</span>
             </NavLink>
           ))}
-          <div className="nav-section">
-            <NavLink to="/analytics" end className="nav-item nav-item--parent">
-              <BarChart3 size={19} />
-              <span>Analytics</span>
-            </NavLink>
-            <div className="nav-children" aria-label="Analytics sections">
-              {analyticsNav.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} className="nav-item nav-item--child">
-                  <item.icon size={17} />
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
-          <div className="nav-section">
-            <NavLink to="/campaigns" end className="nav-item nav-item--parent">
-              <Target size={19} />
-              <span>Campaigns</span>
-            </NavLink>
-            <div className="nav-children" aria-label="Campaign sections">
-              {campaignNav.map((item) => (
-                <NavLink key={item.to} to={item.to} className="nav-item nav-item--child">
-                  <item.icon size={17} />
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
-          <NavLink to="/leads" className="nav-item">
-            <Target size={19} />
-            <span>Leads</span>
-          </NavLink>
-          <NavLink to="/inbox" className="nav-item">
-            <Inbox size={19} />
-            <span>Inbox</span>
-          </NavLink>
-          <div className="nav-section">
-            <NavLink to="/settings" end className="nav-item nav-item--parent">
-              <Settings size={19} />
-              <span>Settings</span>
-            </NavLink>
-            <div className="nav-children" aria-label="Settings sections">
-              {settingsNav.map((item) => (
-                <NavLink key={item.to} to={item.to} end={item.end} className="nav-item nav-item--child">
-                  <item.icon size={17} />
-                  <span>{item.label}</span>
-                </NavLink>
-              ))}
-            </div>
-          </div>
         </nav>
 
         <div className="sidebar-footer">

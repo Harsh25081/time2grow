@@ -227,7 +227,7 @@ requirePattern(
 requirePattern(
   'Leads route is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
-  /LeadsPage[\s\S]*to="\/leads"[\s\S]*path="\/leads"/,
+  /LeadsPage[\s\S]*to: '\/leads'[\s\S]*path="\/leads"/,
 );
 requirePattern(
   'Inbox tables are org-scoped and role-protected',
@@ -262,7 +262,7 @@ requirePattern(
 requirePattern(
   'Inbox route is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
-  /InboxPage[\s\S]*to="\/inbox"[\s\S]*path="\/inbox"/,
+  /InboxPage[\s\S]*to: '\/inbox'[\s\S]*path="\/inbox"/,
 );
 requirePattern(
   'Trend Radar table is org-scoped and role-protected',
@@ -310,19 +310,19 @@ requirePattern(
   /(?=[\s\S]*Social Distribution Hub)(?=[\s\S]*Distribution)/,
 );
 requirePattern(
-  'Campaign work modules sit under Campaigns',
+  'Sidebar shows requested top-level modules',
   'apps/web/src/app/AppShell.tsx',
-  /campaignNav[\s\S]*\/campaigns\/content[\s\S]*\/campaigns\/posters[\s\S]*\/campaigns\/tasks[\s\S]*\/campaigns\/social[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,
+  /appNav[\s\S]*Home[\s\S]*Business DNA[\s\S]*Campaigns[\s\S]*Content Studio[\s\S]*Poster Studio[\s\S]*Distribution Hub[\s\S]*Unified Inbox[\s\S]*Leads[\s\S]*Trend Radar[\s\S]*Competitor Intelligence[\s\S]*Analytics[\s\S]*Settings/,
 );
 requirePattern(
-  'Connections sits under Settings',
+  'Campaign shortcut routes remain available',
   'apps/web/src/app/AppShell.tsx',
-  /settingsNav[\s\S]*\/settings\/connections[\s\S]*path="\/connections" element=\{<Navigate to="\/settings\/connections"/,
+  /path="\/campaigns\/content"[\s\S]*path="\/campaigns\/posters"[\s\S]*path="\/campaigns\/social"[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,
 );
 requirePattern(
-  'Settings tree includes requested sections',
+  'Settings routes include requested sections',
   'apps/web/src/app/AppShell.tsx',
-  /settingsNav[\s\S]*\/settings\/connections[\s\S]*\/settings\/team[\s\S]*\/settings\/workspace[\s\S]*\/settings\/billing[\s\S]*\/settings\/notifications[\s\S]*\/settings\/security[\s\S]*path="\/settings\/team"[\s\S]*path="\/settings\/security"/,
+  /path="\/settings\/connections"[\s\S]*path="\/settings\/team"[\s\S]*path="\/settings\/workspace"[\s\S]*path="\/settings\/billing"[\s\S]*path="\/settings\/notifications"[\s\S]*path="\/settings\/security"/,
 );
 requirePattern(
   'Settings pages implement team workspace notifications security and billing coming soon',
@@ -337,7 +337,7 @@ requirePattern(
 requirePattern(
   'Analytics page is wired into app shell',
   'apps/web/src/app/AppShell.tsx',
-  /AnalyticsPage[\s\S]*analyticsNav[\s\S]*\/analytics\/reporting[\s\S]*path="\/analytics"[\s\S]*path="\/analytics\/reporting"/,
+  /AnalyticsPage[\s\S]*to: '\/analytics'[\s\S]*path="\/analytics"[\s\S]*path="\/analytics\/reporting"/,
 );
 requirePattern(
   'Analytics page reads workflow and reporting data',
