@@ -966,7 +966,7 @@ export function ContentCreatorPage() {
                   </button>
                   <Link className="icon-text-button" to="/social">
                     <Send size={16} />
-                    <span>Social Hub</span>
+                    <span>Social Distribution Hub</span>
                   </Link>
                 </div>
               </>
@@ -1000,7 +1000,7 @@ export function ContentCreatorPage() {
                 </div>
                 <Link className="icon-text-button" to="/social">
                   <Send size={16} />
-                  <span>Social Hub</span>
+                  <span>Social Distribution Hub</span>
                 </Link>
               </div>
             </div>

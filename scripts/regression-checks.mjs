@@ -205,6 +205,31 @@ requirePattern(
   /InboxPage[\s\S]*to="\/inbox"[\s\S]*path="\/inbox"/,
 );
 requirePattern(
+  'Trend Radar table is org-scoped and role-protected',
+  'supabase/migrations/20260720113000_trend_radar.sql',
+  /create table if not exists public\.trend_radar_items[\s\S]*org_id uuid not null[\s\S]*google_trends[\s\S]*ai_opportunity[\s\S]*trend_radar_items_select_members[\s\S]*trend_radar_items_write_editors/,
+);
+requirePattern(
+  'Trend Radar page is real CRUD and role-aware',
+  'apps/web/src/features/trends/TrendRadarPage.tsx',
+  /from\('trend_radar_items'\)[\s\S]*eq\('org_id', organization\.id\)[\s\S]*canWrite[\s\S]*Add trend[\s\S]*Save trend/,
+);
+requirePattern(
+  'Trend Radar generates campaigns from recommendations',
+  'apps/web/src/features/trends/TrendRadarPage.tsx',
+  /generateCampaign[\s\S]*Trend detected:[\s\S]*from\('campaigns'\)[\s\S]*status: 'campaign_generated'[\s\S]*Generate now/,
+);
+requirePattern(
+  'Trend Radar route is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /TrendRadarPage[\s\S]*to: '\/trends'[\s\S]*path="\/trends"/,
+);
+requirePattern(
+  'Social Hub visible label is renamed',
+  'apps/web/src/app/AppShell.tsx',
+  /Social Distribution Hub[\s\S]*Distribution/,
+);
+requirePattern(
   'Campaign work modules sit under Campaigns',
   'apps/web/src/app/AppShell.tsx',
   /campaignNav[\s\S]*\/campaigns\/content[\s\S]*\/campaigns\/posters[\s\S]*\/campaigns\/tasks[\s\S]*\/campaigns\/social[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,

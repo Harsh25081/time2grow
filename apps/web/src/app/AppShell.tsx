@@ -14,6 +14,7 @@ import {
   Settings,
   Sparkles,
   Target,
+  TrendingUp,
   X,
 } from 'lucide-react';
 import { Navigate, NavLink, Route, Routes } from 'react-router-dom';
@@ -38,6 +39,7 @@ const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterSt
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })));
 const SocialHubPage = lazy(() => import('../features/social-hub/SocialHubPage').then((module) => ({ default: module.SocialHubPage })));
 const TasksPage = lazy(() => import('../features/tasks/TasksPage').then((module) => ({ default: module.TasksPage })));
+const TrendRadarPage = lazy(() => import('../features/trends/TrendRadarPage').then((module) => ({ default: module.TrendRadarPage })));
 
 type WorkspaceDashboardStats = {
   aiUsageToday: number;
@@ -60,13 +62,14 @@ const workspaceNav: NavItem[] = [
 const analyticsNav: NavItem[] = [
   { to: '/analytics', label: 'Overview', icon: BarChart3, end: true },
   { to: '/analytics/reporting', label: 'Reporting Data', icon: CircleDollarSign },
+  { to: '/trends', label: 'Trend Radar', icon: TrendingUp },
 ];
 
 const campaignNav: NavItem[] = [
   { to: '/campaigns/content', label: 'Content', icon: Sparkles },
   { to: '/campaigns/posters', label: 'AI Posters', icon: Sparkles },
   { to: '/campaigns/tasks', label: 'Tasks', icon: CalendarDays },
-  { to: '/campaigns/social', label: 'Social', icon: Send },
+  { to: '/campaigns/social', label: 'Distribution', icon: Send },
 ];
 
 const settingsNav: NavItem[] = [
@@ -112,10 +115,16 @@ const modules = [
     color: 'pink',
   },
   {
-    title: 'Social Hub',
+    title: 'Social Distribution Hub',
     description: 'Publish posts, posters, and videos to connected social and messaging channels.',
     status: 'Priority',
     color: 'blue',
+  },
+  {
+    title: 'Trend Radar',
+    description: 'Track market signals and turn rising opportunities into campaigns.',
+    status: 'Live',
+    color: 'green',
   },
   {
     title: 'Lead CRM',
@@ -279,6 +288,7 @@ export function AppShell() {
           <Route path="/business-dna" element={<BusinessDnaPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/analytics/reporting" element={<AnalyticsReportingPage />} />
+          <Route path="/trends" element={<TrendRadarPage />} />
           <Route path="/campaigns" element={<CampaignsPage />} />
           <Route path="/campaigns/content" element={<ContentCreatorPage />} />
           <Route path="/campaigns/posters" element={<PosterStudioAiPage />} />

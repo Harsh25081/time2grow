@@ -525,7 +525,7 @@ async function oauthAccessToken(supabase: ReturnType<typeof serviceClient>, prov
   }
 
   if (!data.refresh_token_ciphertext) {
-    throw new HttpError(400, `${provider} token expired. Reconnect ${provider} in Social Hub.`);
+    throw new HttpError(400, `${provider} token expired. Reconnect ${provider} in Social Distribution Hub.`);
   }
 
   const refreshToken = await decryptToken(data.refresh_token_ciphertext);

@@ -35,7 +35,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (stateError || !stateRow) {
-      return htmlResponse('YouTube connection expired', 'Start the YouTube connection again from Social Hub.', 400, appReturnUrl('/social?youtube=expired'));
+      return htmlResponse('YouTube connection expired', 'Start the YouTube connection again from Social Distribution Hub.', 400, appReturnUrl('/social?youtube=expired'));
     }
 
     const tokenBody = await exchangeCodeForToken(code);

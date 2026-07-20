@@ -387,7 +387,7 @@ export function PosterStudioAiPage() {
           const repeatedCount = rawPosters.length - freshPosters.length;
           rememberPosterRequest(posterMemoryKey, { brief, objective, offerType, ctaInput: callToAction, language, format, posterCount: posters.length, titles: posters.flatMap((poster) => [poster.title, poster.copy.headline]).filter(Boolean).slice(0, 6) });
           setMessage(freshPosters.length > 0
-            ? `Your poster agent returned ${posters.length} fresh poster${posters.length > 1 ? 's' : ''}${repeatedCount > 0 ? ` and I skipped ${repeatedCount} repeated headline${repeatedCount > 1 ? 's' : ''}` : ''}. Pick one, then Download, Save, or send to Social Hub.`
+            ? `Your poster agent returned ${posters.length} fresh poster${posters.length > 1 ? 's' : ''}${repeatedCount > 0 ? ` and I skipped ${repeatedCount} repeated headline${repeatedCount > 1 ? 's' : ''}` : ''}. Pick one, then Download, Save, or send to Social Distribution Hub.`
             : 'The poster agent reused an older headline, so I am showing the generated poster instead of wasting the wait. Generate again for a fresh direction.');
           return;
         }
@@ -636,7 +636,7 @@ export function PosterStudioAiPage() {
           await savePosterAsset(blob, title, body, optionIndex);
           rememberPosterChoice(posterMemoryKey, poster, scope === 'all' ? 'save_all' : 'save');
         }
-        setMessage(scope === 'all' ? postersToSave.length + ' posters saved to your library.' : 'Poster saved to your library and ready for Social Hub.');
+        setMessage(scope === 'all' ? postersToSave.length + ' posters saved to your library.' : 'Poster saved to your library and ready for Social Distribution Hub.');
         return;
       }
 
@@ -646,7 +646,7 @@ export function PosterStudioAiPage() {
       const title = content.headline;
       const body = [content.headline, content.subheadline, content.offer, content.callToAction].filter(Boolean).join('\n');
       await savePosterAsset(blob, title, body, 0);
-      setMessage('Poster saved to your library and ready for Social Hub.');
+      setMessage('Poster saved to your library and ready for Social Distribution Hub.');
     } catch (saveError) {
       setError(errorMessage(saveError, 'Could not save the poster.'));
     } finally {
@@ -821,7 +821,7 @@ export function PosterStudioAiPage() {
                 {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleDownload('all')}><Download size={16} /><span>Download all</span></button> : null}
                 <button type="button" className="icon-text-button" onClick={() => handleSave('selected')} disabled={saving || !canWrite || !selectedDna || (!usingAi && !selectedConcept)}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : usingAi && aiPosters.length > 1 ? 'Save selected' : 'Save'}</span></button>
                 {usingAi && aiPosters.length > 1 ? <button type="button" className="icon-text-button" onClick={() => handleSave('all')} disabled={saving || !canWrite || !selectedDna}>{saving ? <Loader2 className="spin" size={16} /> : <Save size={16} />}<span>{saving ? 'Saving' : 'Save all'}</span></button> : null}
-                <Link className="icon-text-button" to="/social"><Send size={16} /><span>Social Hub</span></Link>
+                <Link className="icon-text-button" to="/social"><Send size={16} /><span>Social Distribution Hub</span></Link>
               </div>
             </div>
 

@@ -672,6 +672,65 @@ export type Database = {
         };
         Relationships: [];
       };
+      trend_radar_items: {
+        Row: {
+          id: string;
+          org_id: string;
+          client_business_dna_id: string | null;
+          campaign_id: string | null;
+          source: 'google_trends' | 'instagram' | 'youtube' | 'linkedin' | 'competitor' | 'ai_opportunity' | 'manual' | 'other';
+          topic: string;
+          signal: string | null;
+          change_percent: number;
+          confidence_score: number;
+          status: 'new' | 'reviewing' | 'approved' | 'campaign_generated' | 'dismissed' | 'archived';
+          recommended_campaign: string | null;
+          opportunity: string | null;
+          source_url: string | null;
+          detected_at: string;
+          metadata: Json;
+          created_by: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          source?: 'google_trends' | 'instagram' | 'youtube' | 'linkedin' | 'competitor' | 'ai_opportunity' | 'manual' | 'other';
+          topic: string;
+          signal?: string | null;
+          change_percent?: number;
+          confidence_score?: number;
+          status?: 'new' | 'reviewing' | 'approved' | 'campaign_generated' | 'dismissed' | 'archived';
+          recommended_campaign?: string | null;
+          opportunity?: string | null;
+          source_url?: string | null;
+          detected_at?: string;
+          metadata?: Json;
+          created_by: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          source?: 'google_trends' | 'instagram' | 'youtube' | 'linkedin' | 'competitor' | 'ai_opportunity' | 'manual' | 'other';
+          topic?: string;
+          signal?: string | null;
+          change_percent?: number;
+          confidence_score?: number;
+          status?: 'new' | 'reviewing' | 'approved' | 'campaign_generated' | 'dismissed' | 'archived';
+          recommended_campaign?: string | null;
+          opportunity?: string | null;
+          source_url?: string | null;
+          detected_at?: string;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       social_posts: {
         Row: {
           id: string;

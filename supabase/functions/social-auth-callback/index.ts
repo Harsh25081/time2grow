@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (stateError || !stateRow) {
-      return htmlResponse('Connection expired', 'Start the connection again from Social Hub.', 400, appReturnUrl('/social?connected=expired'));
+      return htmlResponse('Connection expired', 'Start the connection again from Social Distribution Hub.', 400, appReturnUrl('/social?connected=expired'));
     }
 
     const provider = stateRow.provider as Provider;

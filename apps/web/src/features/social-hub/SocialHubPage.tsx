@@ -451,7 +451,7 @@ export function SocialHubPage() {
       <header className="page-header">
         <div>
           <p className="eyebrow">Distribution</p>
-          <h2>Social Hub</h2>
+          <h2>Social Distribution Hub</h2>
         </div>
         <span className={selectedHandles.length > 0 ? 'status-pill success' : 'status-pill warning'}>{selectedHandles.length > 0 ? `${selectedHandles.length} selected` : 'Select handles'}</span>
       </header>
