@@ -570,6 +570,108 @@ export type Database = {
         };
         Relationships: [];
       };
+      inbox_threads: {
+        Row: {
+          id: string;
+          org_id: string;
+          client_business_dna_id: string | null;
+          campaign_id: string | null;
+          lead_id: string | null;
+          distribution_handle_id: string | null;
+          channel: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'website' | 'email' | 'other';
+          contact_name: string;
+          contact_email: string | null;
+          contact_phone: string | null;
+          external_thread_id: string | null;
+          status: 'open' | 'pending' | 'replied' | 'resolved' | 'archived';
+          priority: 'low' | 'normal' | 'high';
+          last_message_preview: string | null;
+          last_message_at: string;
+          assigned_to: string | null;
+          metadata: Json;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          lead_id?: string | null;
+          distribution_handle_id?: string | null;
+          channel?: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'website' | 'email' | 'other';
+          contact_name: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          external_thread_id?: string | null;
+          status?: 'open' | 'pending' | 'replied' | 'resolved' | 'archived';
+          priority?: 'low' | 'normal' | 'high';
+          last_message_preview?: string | null;
+          last_message_at?: string;
+          assigned_to?: string | null;
+          metadata?: Json;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          client_business_dna_id?: string | null;
+          campaign_id?: string | null;
+          lead_id?: string | null;
+          distribution_handle_id?: string | null;
+          channel?: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram' | 'website' | 'email' | 'other';
+          contact_name?: string;
+          contact_email?: string | null;
+          contact_phone?: string | null;
+          external_thread_id?: string | null;
+          status?: 'open' | 'pending' | 'replied' | 'resolved' | 'archived';
+          priority?: 'low' | 'normal' | 'high';
+          last_message_preview?: string | null;
+          last_message_at?: string;
+          assigned_to?: string | null;
+          metadata?: Json;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      inbox_messages: {
+        Row: {
+          id: string;
+          org_id: string;
+          thread_id: string;
+          direction: 'inbound' | 'outbound' | 'internal';
+          body: string;
+          sender_name: string | null;
+          sender_handle: string | null;
+          external_message_id: string | null;
+          metadata: Json;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          thread_id: string;
+          direction?: 'inbound' | 'outbound' | 'internal';
+          body: string;
+          sender_name?: string | null;
+          sender_handle?: string | null;
+          external_message_id?: string | null;
+          metadata?: Json;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          direction?: 'inbound' | 'outbound' | 'internal';
+          body?: string;
+          sender_name?: string | null;
+          sender_handle?: string | null;
+          external_message_id?: string | null;
+          metadata?: Json;
+        };
+        Relationships: [];
+      };
       social_posts: {
         Row: {
           id: string;

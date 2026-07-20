@@ -32,6 +32,7 @@ const AnalyticsReportingPage = lazy(() => import('../features/analytics/Analytic
 const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
+const InboxPage = lazy(() => import('../features/inbox/InboxPage').then((module) => ({ default: module.InboxPage })));
 const LeadsPage = lazy(() => import('../features/leads/LeadsPage').then((module) => ({ default: module.LeadsPage })));
 const PosterStudioAiPage = lazy(() => import('../features/poster-studio/PosterStudioAiPage').then((module) => ({ default: module.PosterStudioAiPage })));
 const SettingsPage = lazy(() => import('../features/settings/SettingsPage').then((module) => ({ default: module.SettingsPage })));
@@ -229,6 +230,10 @@ export function AppShell() {
             <Target size={19} />
             <span>Leads</span>
           </NavLink>
+          <NavLink to="/inbox" className="nav-item">
+            <Inbox size={19} />
+            <span>Inbox</span>
+          </NavLink>
           <div className="nav-section">
             <NavLink to="/settings" className="nav-item nav-item--parent">
               <Settings size={19} />
@@ -286,7 +291,7 @@ export function AppShell() {
           <Route path="/tasks" element={<Navigate to="/campaigns/tasks" replace />} />
           <Route path="/connections" element={<Navigate to="/settings/connections" replace />} />
           <Route path="/leads" element={<LeadsPage />} />
-          <Route path="/inbox" element={<ModulePlaceholder title="Unified Inbox" icon={Inbox} />} />
+          <Route path="/inbox" element={<InboxPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/settings/connections" element={<ConnectionsPage />} />
             <Route path="*" element={<NavigateHome />} />
@@ -418,26 +423,6 @@ function Dashboard({
           <li>Run migration in Supabase</li>
           <li>Create first user account</li>
         </ol>
-      </section>
-    </div>
-  );
-}
-
-function ModulePlaceholder({ title, icon: Icon }: { title: string; icon: typeof Home }) {
-  return (
-    <div className="page-stack">
-      <header className="page-header">
-        <div>
-          <p className="eyebrow">Module</p>
-          <h2>{title}</h2>
-        </div>
-        <Icon size={24} />
-      </header>
-
-      <section className="empty-state">
-        <BarChart3 size={34} />
-        <h3>{title} is coming soon</h3>
-        <p>This module is not available yet. We are preparing it for a future release.</p>
       </section>
     </div>
   );

@@ -2129,6 +2129,188 @@ a {
   font-weight: 700;
 }
 
+.inbox-workspace {
+  display: grid;
+  gap: 14px;
+}
+
+.inbox-action-panel {
+  max-width: 920px;
+  width: 100%;
+}
+
+.inbox-board {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.inbox-list-panel,
+.inbox-detail-panel {
+  min-width: 0;
+}
+
+.inbox-list-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.inbox-thread-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inbox-thread {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-thread.is-active {
+  border-color: rgba(225, 28, 107, 0.36);
+  background: #fff7fb;
+}
+
+.inbox-thread strong,
+.inbox-thread small,
+.inbox-thread > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-thread small,
+.inbox-thread > span:last-child,
+.inbox-contact-line,
+.inbox-message div {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inbox-priority {
+  width: fit-content;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.inbox-priority.high {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.inbox-priority.low {
+  background: #f0fdf4;
+  color: #15803d;
+}
+
+.inbox-detail-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.inbox-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.inbox-detail-header h3 {
+  margin: 0;
+}
+
+.inbox-contact-line {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #fbfcfe;
+  padding: 10px 12px;
+}
+
+.inbox-message-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.inbox-message {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #e8eaf0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 11px 12px;
+}
+
+.inbox-message.outbound {
+  border-color: #dbeafe;
+  background: #f8fbff;
+}
+
+.inbox-message.internal {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.inbox-message div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inbox-message strong {
+  color: var(--text);
+}
+
+.inbox-message p {
+  margin: 0;
+  color: #374151;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.inbox-composer {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #e8eaf0;
+  padding-top: 12px;
+}
+
+.inbox-composer textarea {
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 12px;
+  color: var(--text);
+  resize: vertical;
+}
+
 .saved-content-panel {
   grid-column: 1 / -1;
 }
@@ -2736,6 +2918,10 @@ a {
     grid-template-columns: 1fr;
   }
 
+  .inbox-board {
+    grid-template-columns: 1fr;
+  }
+
   .analytics-health-grid,
   .analytics-query-map,
   .analytics-source-grid,
@@ -2833,6 +3019,21 @@ a {
   .content-edit-form,
   .saved-content-row {
     grid-template-columns: 1fr;
+  }
+
+  .lead-summary-strip,
+  .lead-import-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .inbox-detail-header,
+  .inbox-contact-line {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inbox-message-list {
+    max-height: none;
   }
 
   .saved-content-row__side {

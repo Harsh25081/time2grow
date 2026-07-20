@@ -185,6 +185,26 @@ requirePattern(
   /LeadsPage[\s\S]*to="\/leads"[\s\S]*path="\/leads"/,
 );
 requirePattern(
+  'Inbox tables are org-scoped and role-protected',
+  'supabase/migrations/20260720110000_unified_inbox.sql',
+  /create table if not exists public\.inbox_threads[\s\S]*org_id uuid not null[\s\S]*create table if not exists public\.inbox_messages[\s\S]*inbox_threads_select_members[\s\S]*inbox_messages_write_editors/,
+);
+requirePattern(
+  'Inbox page is real CRUD and role-aware',
+  'apps/web/src/features/inbox/InboxPage.tsx',
+  /from\('inbox_threads'\)[\s\S]*eq\('org_id', organization\.id\)[\s\S]*from\('inbox_messages'\)[\s\S]*canWrite[\s\S]*Create conversation[\s\S]*createLeadFromThread/,
+);
+requirePattern(
+  'Inbox uses existing handles and CRM links',
+  'apps/web/src/features/inbox/InboxPage.tsx',
+  /from\('leads'\)[\s\S]*from\('campaigns'\)[\s\S]*from\('distribution_handles'\)[\s\S]*lead_id[\s\S]*campaign_id[\s\S]*distribution_handle_id/,
+);
+requirePattern(
+  'Inbox route is wired into app shell',
+  'apps/web/src/app/AppShell.tsx',
+  /InboxPage[\s\S]*to="\/inbox"[\s\S]*path="\/inbox"/,
+);
+requirePattern(
   'Campaign work modules sit under Campaigns',
   'apps/web/src/app/AppShell.tsx',
   /campaignNav[\s\S]*\/campaigns\/content[\s\S]*\/campaigns\/posters[\s\S]*\/campaigns\/tasks[\s\S]*\/campaigns\/social[\s\S]*path="\/content" element=\{<Navigate to="\/campaigns\/content"/,
