@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -615,6 +616,11 @@ export function SocialHubPage() {
                 <div>
                   <span>{statusText(row.status)}</span>
                   <small>{formatDate(row.createdAt)}</small>
+                  {row.status === 'published' || row.status === 'partial_failed' ? (
+                    <Link className="link-button" to={`/analytics/posts?postId=${row.id}`}>
+                      View insights &amp; comments
+                    </Link>
+                  ) : null}
                 </div>
               </div>
             ))}

@@ -1,9 +1,9 @@
-import { useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
-import { AuthPage } from '../features/auth/AuthPage';
-import { useAuth } from '../features/auth/AuthProvider';
-import { AppShell } from './AppShell';
-import { PublicInfoPage } from './PublicInfoPage';
+import { useState } from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { AuthPage } from "../features/auth/AuthPage";
+import { useAuth } from "../features/auth/AuthProvider";
+import { AppShell } from "./AppShell";
+import { PublicInfoPage } from "./PublicInfoPage";
 
 export function App() {
   const { loading } = useAuth();
@@ -74,8 +74,13 @@ function WorkspaceLoadError({
       <h1>We could not load your workspace</h1>
       <p className="form-message error">{message}</p>
       <div className="composer-actions">
-        <button className="primary-action" type="button" onClick={retry} disabled={retrying}>
-          {retrying ? 'Retrying' : 'Try again'}
+        <button
+          className="primary-action"
+          type="button"
+          onClick={retry}
+          disabled={retrying}
+        >
+          {retrying ? "Retrying" : "Try again"}
         </button>
         <button className="icon-text-button" type="button" onClick={onSignOut}>
           Sign out

@@ -6,6 +6,7 @@ import {
   Dna,
   Home,
   Inbox,
+  LineChart,
   Loader2,
   LogOut,
   Megaphone,
@@ -39,6 +40,7 @@ type HomeContentRow = Pick<Database['public']['Tables']['content_items']['Row'],
 const BusinessDnaPage = lazy(() => import('../features/business-dna/BusinessDnaPage').then((module) => ({ default: module.BusinessDnaPage })));
 const AnalyticsPage = lazy(() => import('../features/analytics/AnalyticsPage').then((module) => ({ default: module.AnalyticsPage })));
 const AnalyticsReportingPage = lazy(() => import('../features/analytics/AnalyticsReportingPage').then((module) => ({ default: module.AnalyticsReportingPage })));
+const PostInsightsPage = lazy(() => import('../features/post-insights/PostInsightsPage').then((module) => ({ default: module.PostInsightsPage })));
 const CampaignsPage = lazy(() => import('../features/campaigns/CampaignsPage').then((module) => ({ default: module.CampaignsPage })));
 const ConnectionsPage = lazy(() => import('../features/connections/ConnectionsPage').then((module) => ({ default: module.ConnectionsPage })));
 const ContentCreatorPage = lazy(() => import('../features/content-studio/ContentCreatorPage').then((module) => ({ default: module.ContentCreatorPage })));
@@ -76,6 +78,7 @@ const appNav: NavItem[] = [
   { to: '/trends', label: 'Trend Radar', icon: TrendingUp },
   { to: '/competitors', label: 'Competitor Intelligence', icon: Search },
   { to: '/analytics', label: 'Analytics', icon: BarChart3 },
+  // { to: '/analytics/posts', label: 'Post Insights', icon: LineChart },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
@@ -189,6 +192,7 @@ export function AppShell() {
           />
           <Route path="/business-dna" element={<BusinessDnaPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
+          <Route path="/analytics/posts" element={<PostInsightsPage />} />
           <Route path="/analytics/reporting" element={<AnalyticsReportingPage />} />
           <Route path="/trends" element={<TrendRadarPage />} />
           <Route path="/competitors" element={<CompetitorIntelligencePage />} />

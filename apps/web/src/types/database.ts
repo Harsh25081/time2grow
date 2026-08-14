@@ -1125,7 +1125,123 @@ export type Database = {
           updated_at?: string;
         };
         Relationships: [];
-      };      social_media_assets: {
+      };
+      post_insights: {
+        Row: {
+          id: string;
+          org_id: string;
+          social_post_id: string;
+          publish_target_id: string;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          impressions: number;
+          reach: number;
+          likes: number;
+          comments_count: number;
+          shares: number;
+          saves: number;
+          video_views: number;
+          engagement_rate: number | null;
+          raw_metrics: Json;
+          fetch_status: 'idle' | 'fetching' | 'ok' | 'error';
+          fetch_error: string | null;
+          fetched_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          social_post_id: string;
+          publish_target_id: string;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          impressions?: number;
+          reach?: number;
+          likes?: number;
+          comments_count?: number;
+          shares?: number;
+          saves?: number;
+          video_views?: number;
+          engagement_rate?: number | null;
+          raw_metrics?: Json;
+          fetch_status?: 'idle' | 'fetching' | 'ok' | 'error';
+          fetch_error?: string | null;
+          fetched_at?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          impressions?: number;
+          reach?: number;
+          likes?: number;
+          comments_count?: number;
+          shares?: number;
+          saves?: number;
+          video_views?: number;
+          engagement_rate?: number | null;
+          raw_metrics?: Json;
+          fetch_status?: 'idle' | 'fetching' | 'ok' | 'error';
+          fetch_error?: string | null;
+          fetched_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      post_comments: {
+        Row: {
+          id: string;
+          org_id: string;
+          social_post_id: string;
+          publish_target_id: string;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          direction: 'inbound' | 'outbound';
+          external_comment_id: string | null;
+          parent_comment_id: string | null;
+          external_parent_comment_id: string | null;
+          author_name: string | null;
+          author_handle: string | null;
+          author_avatar_url: string | null;
+          message: string;
+          like_count: number;
+          status: 'received' | 'sending' | 'sent' | 'failed';
+          error_message: string | null;
+          external_created_at: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          org_id: string;
+          social_post_id: string;
+          publish_target_id: string;
+          provider: 'facebook' | 'instagram' | 'linkedin' | 'youtube' | 'google_ads' | 'whatsapp' | 'slack' | 'telegram';
+          direction?: 'inbound' | 'outbound';
+          external_comment_id?: string | null;
+          parent_comment_id?: string | null;
+          external_parent_comment_id?: string | null;
+          author_name?: string | null;
+          author_handle?: string | null;
+          author_avatar_url?: string | null;
+          message: string;
+          like_count?: number;
+          status?: 'received' | 'sending' | 'sent' | 'failed';
+          error_message?: string | null;
+          external_created_at?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          message?: string;
+          like_count?: number;
+          status?: 'received' | 'sending' | 'sent' | 'failed';
+          error_message?: string | null;
+          external_comment_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      social_media_assets: {
         Row: {
           id: string;
           org_id: string;

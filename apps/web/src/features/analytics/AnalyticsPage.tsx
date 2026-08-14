@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   BarChart3,
   Bot,
@@ -283,6 +284,14 @@ export function AnalyticsPage() {
           {hasReportingData ? `${metrics.length} metric rows` : hasWorkflowData ? (isAgency ? 'Agency workflow data' : 'Workflow data') : 'No data yet'}
         </span>
       </header>
+
+      <Link to="/analytics/posts" className="post-insights-callout-card">
+        <div>
+          <strong>Post-level insights &amp; comments</strong>
+          <span>See live impressions, likes, and comments for each published post, and reply from here.</span>
+        </div>
+        <span className="link-button">Open -&gt;</span>
+      </Link>
 
       {loading ? (
         <section className="empty-state" aria-label="Loading analytics">
