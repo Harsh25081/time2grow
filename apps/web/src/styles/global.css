@@ -1167,6 +1167,51 @@ a {
   text-align: right;
 }
 
+.queue-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.queue-row__summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.queue-row__targets {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 6px;
+  background: var(--surface-muted, #f7f7f8);
+}
+
+.queue-target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.queue-target__label {
+  font-size: 0.92rem;
+  color: var(--ink, #111);
+}
+
+.queue-target__retry {
+  font-size: 0.85rem;
+  padding: 0;
+}
+
+.queue-target__error {
+  grid-column: 1 / -1;
+  color: var(--danger, #b3261e);
+}
+
 .readiness-panel ul {
   margin: 0;
   padding-left: 20px;

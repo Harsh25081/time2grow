@@ -40,6 +40,16 @@ type DraftForm = {
   scheduledAt: string;
 };
 
+type TargetStatus = 'queued' | 'publishing' | 'published' | 'failed' | 'rate_limited' | 'skipped';
+
+type QueueTarget = {
+  id: string;
+  label: string;
+  provider: Provider;
+  status: TargetStatus;
+  errorMessage: string | null;
+};
+
 type QueueRun = {
   id: string;
   title: string;
@@ -47,6 +57,7 @@ type QueueRun = {
   status: PostStatus | 'local';
   createdAt: string;
   targetLabels: string[];
+  targets: QueueTarget[];
 };
 
 type PublishResult = {
@@ -54,6 +65,7 @@ type PublishResult = {
   published?: number;
   failed?: number;
   results?: Array<{
+    targetId?: string;
     provider?: Provider;
     label?: string;
     status?: string;
@@ -94,6 +106,7 @@ export function SocialHubPage() {
   const [queueMessage, setQueueMessage] = useState('');
   const [queueError, setQueueError] = useState('');
   const [queueing, setQueueing] = useState(false);
+  const [retryingTargetKey, setRetryingTargetKey] = useState('');
   const isAgency = organization?.org_type === 'agency';
   const { clients } = useBrandDna(organization?.id, isAgency);
 
@@ -370,14 +383,16 @@ export function SocialHubPage() {
         if (targetError) throw targetError;
 
         const sourceNote = sourceLinkSkipped ? ' Source link skipped until the database migration is applied.' : '';
+        const insertedTargets = mapTargetRowsToQueueTargets(targets ?? []);
 
         if (isScheduled && scheduledAt) {
-          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: 'queued' }, targets ?? []), ...current]);
+          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: 'queued' }, insertedTargets), ...current]);
           setQueueMessage('Scheduled "' + title + '" for ' + formatDate(scheduledAt.toISOString()) + '.' + sourceNote);
         } else {
           const publishResult = await publishPostNow(post.id);
           const nextStatus = publishResult.postStatus ?? 'queued';
-          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: nextStatus }, targets ?? []), ...current]);
+          const settledTargets = applyPublishResultToTargets(insertedTargets, publishResult);
+          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: nextStatus }, settledTargets), ...current]);
 
           if ((publishResult.failed ?? 0) > 0) {
             setQueueError(publishResultSummary(publishResult) + sourceNote);
@@ -393,6 +408,7 @@ export function SocialHubPage() {
           status: 'local',
           createdAt: new Date().toISOString(),
           targetLabels: selectedHandles.map((handle) => handle.label),
+          targets: [],
         };
         setQueueRuns((current) => [localRun, ...current]);
         setQueueMessage('Preview saved locally. Connect Supabase and provider credentials for real publishing.');
@@ -404,15 +420,43 @@ export function SocialHubPage() {
     }
   }
 
-  async function publishPostNow(postId: string): Promise<PublishResult> {
+  async function publishPostNow(postId: string, targetId?: string): Promise<PublishResult> {
     if (!supabase) throw new Error('Supabase is not configured.');
 
     const { data, error } = await supabase.functions.invoke('social-publish', {
-      body: { postId },
+      body: targetId ? { postId, targetId } : { postId },
     });
 
     if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-publish'));
     return normalizePublishResult(data);
+  }
+
+  async function retryTarget(postId: string, target: QueueTarget) {
+    const retryKey = `${postId}:${target.id}`;
+    setRetryingTargetKey(retryKey);
+    setQueueError('');
+
+    try {
+      const publishResult = await publishPostNow(postId, target.id);
+      const nextStatus = publishResult.postStatus ?? 'partial_failed';
+
+      setQueueRuns((current) => current.map((run) => {
+        if (run.id !== postId) return run;
+        const nextTargets = applyPublishResultToTargets(run.targets, publishResult);
+        return { ...run, status: nextStatus, targetCount: nextTargets.length, targetLabels: nextTargets.map((item) => item.label), targets: nextTargets };
+      }));
+
+      const retriedResult = publishResult.results?.find((item) => item.targetId === target.id);
+      if (retriedResult?.status === 'failed') {
+        setQueueError(`Retry failed for ${target.label}: ${retriedResult.error ?? 'Publish failed.'}`);
+      } else {
+        setQueueMessage(`Retried ${target.label} successfully.`);
+      }
+    } catch (error) {
+      setQueueError(errorMessage(error, `Could not retry ${target.label}.`));
+    } finally {
+      setRetryingTargetKey((current) => (current === retryKey ? '' : current));
+    }
   }
 
   function toggleHandle(handleId: string) {
@@ -608,20 +652,49 @@ export function SocialHubPage() {
             {queueRuns.length === 0 ? (
               <div className="queue-empty"><Clock3 size={22} /><span>No publishing runs yet</span></div>
             ) : queueRuns.map((row) => (
-              <div className="queue-row" key={row.id}>
-                <div>
-                  <strong>{row.title}</strong>
-                  <span>{row.targetCount} targets - {row.targetLabels.slice(0, 3).join(', ')}{row.targetLabels.length > 3 ? '...' : ''}</span>
+              <div className="queue-row queue-row--stacked" key={row.id}>
+                <div className="queue-row__summary">
+                  <div>
+                    <strong>{row.title}</strong>
+                    <span>{row.targetCount} targets - {row.targetLabels.slice(0, 3).join(', ')}{row.targetLabels.length > 3 ? '...' : ''}</span>
+                  </div>
+                  <div>
+                    <span>{statusText(row.status)}</span>
+                    <small>{formatDate(row.createdAt)}</small>
+                    {row.status === 'published' || row.status === 'partial_failed' ? (
+                      <Link className="link-button" to={`/analytics/posts?postId=${row.id}`}>
+                        View insights &amp; comments
+                      </Link>
+                    ) : null}
+                  </div>
                 </div>
-                <div>
-                  <span>{statusText(row.status)}</span>
-                  <small>{formatDate(row.createdAt)}</small>
-                  {row.status === 'published' || row.status === 'partial_failed' ? (
-                    <Link className="link-button" to={`/analytics/posts?postId=${row.id}`}>
-                      View insights &amp; comments
-                    </Link>
-                  ) : null}
-                </div>
+                {row.targets.length > 0 && (row.status === 'partial_failed' || row.status === 'failed') ? (
+                  <div className="queue-row__targets">
+                    {row.targets.map((target) => {
+                      const retryKey = `${row.id}:${target.id}`;
+                      const isRetrying = retryingTargetKey === retryKey;
+                      return (
+                        <div className={`queue-target queue-target--${target.status}`} key={target.id}>
+                          <span className="queue-target__label">{target.label}</span>
+                          <span className={`handle-status ${target.status === 'published' ? 'ready' : isRetryableTargetStatus(target.status) ? 'needs_setup' : 'review'}`}>
+                            {target.status === 'published' ? 'Published' : target.status === 'failed' ? 'Failed' : target.status === 'rate_limited' ? 'Rate limited' : target.status}
+                          </span>
+                          {isRetryableTargetStatus(target.status) ? (
+                            <button
+                              type="button"
+                              className="link-button queue-target__retry"
+                              disabled={isRetrying}
+                              onClick={() => retryTarget(row.id, target)}
+                            >
+                              {isRetrying ? 'Retrying...' : 'Retry'}
+                            </button>
+                          ) : null}
+                          {target.errorMessage ? <small className="queue-target__error">{target.errorMessage}</small> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>
@@ -643,15 +716,24 @@ export function SocialHubPage() {
 }
 
 async function loadTargetsForPosts(postIds: string[]) {
-  const targetsByPost = new Map<string, { target_label: string }[]>();
+  const targetsByPost = new Map<string, QueueTarget[]>();
   if (!supabase || postIds.length === 0) return targetsByPost;
 
-  const { data, error } = await supabase.from('publish_targets').select('social_post_id,target_label').in('social_post_id', postIds);
+  const { data, error } = await supabase
+    .from('publish_targets')
+    .select('id,social_post_id,target_label,provider,status,error_message')
+    .in('social_post_id', postIds);
   if (error) return targetsByPost;
 
   for (const target of data ?? []) {
     const targets = targetsByPost.get(target.social_post_id) ?? [];
-    targets.push({ target_label: target.target_label });
+    targets.push({
+      id: target.id,
+      label: target.target_label,
+      provider: target.provider,
+      status: target.status,
+      errorMessage: target.error_message,
+    });
     targetsByPost.set(target.social_post_id, targets);
   }
 
@@ -730,8 +812,48 @@ function isPostStatus(value: unknown): value is PostStatus {
     || value === 'cancelled';
 }
 
-function mapPostToQueueRun(post: SocialPostRow, targets: { target_label: string }[]): QueueRun {
-  return { id: post.id, title: post.title, targetCount: targets.length, status: post.status, createdAt: post.created_at, targetLabels: targets.map((target) => target.target_label) };
+function mapPostToQueueRun(post: SocialPostRow, targets: QueueTarget[]): QueueRun {
+  return {
+    id: post.id,
+    title: post.title,
+    targetCount: targets.length,
+    status: post.status,
+    createdAt: post.created_at,
+    targetLabels: targets.map((target) => target.label),
+    targets,
+  };
+}
+
+function isRetryableTargetStatus(status: TargetStatus) {
+  return status === 'failed' || status === 'rate_limited';
+}
+
+function mapTargetRowsToQueueTargets(rows: Array<{ id: string; target_label: string; provider: Provider; status: string; error_message?: string | null }>): QueueTarget[] {
+  return rows.map((row) => ({
+    id: row.id,
+    label: row.target_label,
+    provider: row.provider,
+    status: isTargetStatus(row.status) ? row.status : 'queued',
+    errorMessage: row.error_message ?? null,
+  }));
+}
+
+function applyPublishResultToTargets(targets: QueueTarget[], result: PublishResult): QueueTarget[] {
+  const resultsById = new Map((result.results ?? []).filter((item) => item.targetId).map((item) => [item.targetId as string, item]));
+
+  return targets.map((target) => {
+    const match = resultsById.get(target.id);
+    if (!match) return target;
+    return {
+      ...target,
+      status: match.status === 'published' ? 'published' : match.status === 'failed' ? 'failed' : target.status,
+      errorMessage: match.status === 'failed' ? (match.error ?? 'Publish failed.') : null,
+    };
+  });
+}
+
+function isTargetStatus(value: unknown): value is TargetStatus {
+  return value === 'queued' || value === 'publishing' || value === 'published' || value === 'failed' || value === 'rate_limited' || value === 'skipped';
 }
 
 function renderPreview(url: string, mimeType: string) {

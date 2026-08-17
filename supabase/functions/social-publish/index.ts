@@ -39,6 +39,7 @@ Deno.serve(async (req) => {
     const supabase = serviceClient();
     const body = await req.json().catch(() => ({}));
     const postId = typeof body.postId === "string" ? body.postId : "";
+    const targetId = typeof body.targetId === "string" ? body.targetId : "";
     const schedulerClaimId =
       typeof body.claimId === "string" ? body.claimId : "";
     if (!postId) return jsonResponse({ error: "Missing postId." }, 400);
@@ -118,19 +119,36 @@ Deno.serve(async (req) => {
       activeClaim = { postId, claimId: manualClaimId };
     }
 
-    const { data: targets, error: targetsError } = await supabase
+    // Targets in "queued" are the normal first-attempt case. "failed" and
+    // "rate_limited" are included so a post-level publish call also sweeps up
+    // any previously failed targets. When a specific targetId is supplied
+    // (retrying a single platform from the UI) we scope to just that target
+    // and only allow it if it's actually eligible for a retry.
+    let targetsQuery = supabase
       .from("publish_targets")
       .select("*")
       .eq("social_post_id", postId)
-      .eq("org_id", post.org_id)
-      .eq("status", "queued");
+      .eq("org_id", post.org_id);
+
+    targetsQuery = targetId
+      ? targetsQuery.eq("id", targetId).in("status", ["failed", "rate_limited"])
+      : targetsQuery.in("status", ["queued", "failed", "rate_limited"]);
+
+    const { data: targets, error: targetsError } = await targetsQuery;
 
     if (targetsError) throw targetsError;
-    if (!targets?.length)
+    if (!targets?.length) {
+      if (targetId) {
+        throw new HttpError(
+          404,
+          "This target was not found or is not eligible for retry. Only failed targets can be retried.",
+        );
+      }
       throw new HttpError(
         400,
         "No queued publish targets found for this post.",
       );
+    }
 
     const handleIds = targets
       .map((target) => target.distribution_handle_id)
@@ -211,15 +229,32 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Compute the post's overall status from ALL of its targets, not just the
+    // ones processed in this run. This matters for single-target retries:
+    // targets that already published successfully in an earlier run must
+    // still count toward "published" vs "partial_failed" vs "failed".
+    const { data: allTargets, error: allTargetsError } = await supabase
+      .from("publish_targets")
+      .select("status")
+      .eq("social_post_id", postId)
+      .eq("org_id", post.org_id);
+    if (allTargetsError) throw allTargetsError;
+
+    const totalTargetCount = allTargets?.length ?? 0;
+    const totalFailedCount = (allTargets ?? []).filter(
+      (row) => row.status === "failed" || row.status === "rate_limited",
+    ).length;
     const failed = results.filter(
       (result) => result.status === "failed",
     ).length;
     const postStatus =
-      failed === 0
-        ? "published"
-        : failed === results.length
-          ? "failed"
-          : "partial_failed";
+      totalTargetCount === 0
+        ? "failed"
+        : totalFailedCount === 0
+          ? "published"
+          : totalFailedCount === totalTargetCount
+            ? "failed"
+            : "partial_failed";
     const completedClaim = activeClaim;
     if (!completedClaim)
       throw new HttpError(
