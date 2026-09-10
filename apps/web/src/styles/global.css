@@ -2255,6 +2255,18 @@ a {
   font-weight: 800;
 }
 
+.connection-card__bottom button.danger-button-subtle {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.connection-card__bottom button.danger-button-subtle:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
 .connection-card__bottom button:disabled {
   opacity: 0.58;
 }

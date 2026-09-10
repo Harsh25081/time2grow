@@ -51,6 +51,7 @@ export function ConnectionsPage() {
   const [connectionMessage, setConnectionMessage] = useState('');
   const [connectionError, setConnectionError] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<Provider | null>(null);
+  const [disconnectingProvider, setDisconnectingProvider] = useState<Provider | null>(null);
   const [discoveringProvider, setDiscoveringProvider] = useState<Provider | null>(null);
   const [formMessage, setFormMessage] = useState('');
   const [formError, setFormError] = useState('');
@@ -170,6 +171,42 @@ export function ConnectionsPage() {
     } catch (error) {
       setConnectionError(errorMessage(error, `Could not connect ${channelName(provider)}.`));
       setConnectingProvider(null);
+    }
+  }
+
+  async function handleDisconnectProvider(provider: Provider) {
+    setConnectionMessage('');
+    if (!canManageConnections) {
+      setConnectionError('Ask a workspace owner or admin to manage connections.');
+      return;
+    }
+    if (!window.confirm(`Disconnect ${channelName(provider)}? This will delete all stored tokens and credentials for this platform.`)) {
+      return;
+    }
+
+    setConnectionError('');
+    if (!supabase || !organization?.id) {
+      setConnectionError('Connect Supabase before managing channels.');
+      return;
+    }
+
+    setDisconnectingProvider(provider);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('social-disconnect', {
+        body: {
+          provider,
+          orgId: organization.id,
+        },
+      });
+
+      if (error) throw new Error(await edgeFunctionErrorMessage(error, 'social-disconnect'));
+      setConnectionMessage(data?.message || `${channelName(provider)} disconnected successfully. All stored credentials have been removed.`);
+      await reloadHandlesAndStatus();
+    } catch (error) {
+      setConnectionError(errorMessage(error, `Could not disconnect ${channelName(provider)}.`));
+    } finally {
+      setDisconnectingProvider(null);
     }
   }
 
@@ -349,12 +386,46 @@ export function ConnectionsPage() {
                 <div className="connection-card__bottom">
                   <span>{connection?.handleCount ?? accountHandles.filter((handle) => handle.provider === channel.provider && handle.persisted).length} handles</span>
                   <div className="connection-card__actions">
-                    <button type="button" onClick={() => handleConnectProvider(channel.provider)} disabled={!canManageConnections || connecting || connectionsLoading || discovering} title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : undefined}>
-                      {connecting ? 'Connecting' : connectionActionText(connection)}
-                    </button>
-                    <button type="button" onClick={() => handleDiscoverProvider(channel.provider)} disabled={!canManageConnections || !discoveryAvailable || discovering || connecting || connectionsLoading} title={!discoveryAvailable ? 'Connect this provider first, then discover handles' : undefined}>
-                      {discovering ? 'Discovering' : 'Discover handles'}
-                    </button>
+                    {connected ? (
+                      <>
+                        <button
+                          type="button"
+                          className="danger-button-subtle"
+                          onClick={() => handleDisconnectProvider(channel.provider)}
+                          disabled={!canManageConnections || disconnectingProvider === channel.provider || connectionsLoading}
+                          title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : 'Disconnect account and delete credentials'}
+                        >
+                          {disconnectingProvider === channel.provider ? 'Disconnecting...' : 'Disconnect'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscoverProvider(channel.provider)}
+                          disabled={!canManageConnections || !discoveryAvailable || discovering || connecting || connectionsLoading || Boolean(disconnectingProvider)}
+                          title={!discoveryAvailable ? 'Connect this provider first, then discover handles' : undefined}
+                        >
+                          {discovering ? 'Discovering' : 'Discover handles'}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleConnectProvider(channel.provider)}
+                          disabled={!canManageConnections || connecting || connectionsLoading || discovering || Boolean(disconnectingProvider)}
+                          title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : undefined}
+                        >
+                          {connecting ? 'Connecting' : connectionActionText(connection)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDiscoverProvider(channel.provider)}
+                          disabled={!canManageConnections || !discoveryAvailable || discovering || connecting || connectionsLoading || Boolean(disconnectingProvider)}
+                          title={!discoveryAvailable ? 'Connect this provider first, then discover handles' : undefined}
+                        >
+                          {discovering ? 'Discovering' : 'Discover handles'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </article>

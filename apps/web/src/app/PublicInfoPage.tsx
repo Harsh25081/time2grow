@@ -44,7 +44,7 @@ function PrivacyContent() {
           <li><strong>Authentication tokens:</strong> OAuth access tokens and refresh tokens are encrypted and stored securely on our servers to maintain your authorized connection without requiring repeated logins.</li>
           <li><strong>Account information:</strong> We retrieve basic account details such as account name, profile identifiers (Page IDs, Channel IDs, Business Account IDs), and available permissions to display your connected accounts and enable publishing to the correct destinations.</li>
           <li><strong>Publishing permissions:</strong> We request only the permissions necessary to publish content on your behalf (e.g., posting text, images, and videos to your connected pages, channels, or profiles).</li>
-          <li><strong>Analytics and insights (optional):</strong> If you use analytics features, we may retrieve public engagement metrics (views, likes, comments, shares) and post performance data from your connected accounts to display insights within time2grow.</li>
+          <li><strong>Analytics and insights:</strong> If you use analytics features, we may retrieve public engagement metrics (views, likes, comments, shares) and post performance data from your connected accounts to display insights within time2grow.</li>
         </ul>
       </section>
 
