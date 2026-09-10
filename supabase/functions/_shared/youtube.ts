@@ -27,19 +27,23 @@ export function jsonResponse(body: Record<string, unknown>, status = 200) {
 }
 
 export function htmlResponse(title: string, message: string, status = 200, redirectTo?: string) {
-  // Only emit the redirect script when we have an absolute URL pointing to our
-  // app.  An empty string or a bare path (no origin) would redirect within the
-  // Supabase edge-function domain, which is never correct.
+  // If we have a valid absolute redirect URL, use HTTP 302 redirect instead of HTML/JS
+  // This is more reliable for OAuth callbacks where browsers may not execute JS
   const hasAbsoluteRedirect = redirectTo && /^https?:\/\//.test(redirectTo);
-  const redirectScript = hasAbsoluteRedirect
-    ? `<script>setTimeout(() => { window.location.href = ${JSON.stringify(redirectTo)}; }, 800);</script>`
-    : '';
 
-  const closeHint = hasAbsoluteRedirect
-    ? ''
-    : '<p style="margin-top:16px;color:#666;">You can close this tab and return to the app.</p>';
+  if (hasAbsoluteRedirect) {
+    return new Response(null, {
+      status: 302,
+      headers: {
+        'Location': redirectTo,
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    });
+  }
 
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family: system-ui, sans-serif; padding: 32px;"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${closeHint}${redirectScript}</body></html>`;
+  // Fallback: show HTML message when no valid redirect URL
+  const closeHint = '<p style="margin-top:16px;color:#666;">You can close this tab and return to the app.</p>';
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family: system-ui, sans-serif; padding: 32px;"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${closeHint}</body></html>`;
 
   return new Response(html, {
     status,
