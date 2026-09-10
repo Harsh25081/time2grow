@@ -159,7 +159,7 @@ export function ConnectionsPage() {
         body: {
           provider,
           orgId: organization.id,
-          returnTo: '/connections',
+          returnTo: `${window.location.origin}/connections`,
         },
       });
 

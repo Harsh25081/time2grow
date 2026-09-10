@@ -27,17 +27,27 @@ export function jsonResponse(body: Record<string, unknown>, status = 200) {
 }
 
 export function htmlResponse(title: string, message: string, status = 200, redirectTo?: string) {
-  const redirectScript = redirectTo
+  // Only emit the redirect script when we have an absolute URL pointing to our
+  // app.  An empty string or a bare path (no origin) would redirect within the
+  // Supabase edge-function domain, which is never correct.
+  const hasAbsoluteRedirect = redirectTo && /^https?:\/\//.test(redirectTo);
+  const redirectScript = hasAbsoluteRedirect
     ? `<script>setTimeout(() => { window.location.href = ${JSON.stringify(redirectTo)}; }, 800);</script>`
     : '';
 
-  return new Response(
-    `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family: system-ui, sans-serif; padding: 32px;"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${redirectScript}</body></html>`,
-    {
-      status,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  const closeHint = hasAbsoluteRedirect
+    ? ''
+    : '<p style="margin-top:16px;color:#666;">You can close this tab and return to the app.</p>';
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body style="font-family: system-ui, sans-serif; padding: 32px;"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${closeHint}${redirectScript}</body></html>`;
+
+  return new Response(html, {
+    status,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
-  );
+  });
 }
 
 export function handleOptions(req: Request) {
@@ -276,8 +286,16 @@ export function requiredEnv(name: string) {
 }
 
 export function appReturnUrl(path = '/social?youtube=connected') {
+  // If path is already a full URL, return it directly
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path;
+  }
+
   const appOrigin = Deno.env.get('APP_ORIGIN') || Deno.env.get('VITE_APP_URL') || '';
-  if (!appOrigin) return '';
+  if (!appOrigin) {
+    console.error('APP_ORIGIN is not set — redirect will fail. Run: supabase secrets set APP_ORIGIN=https://your-app-domain.com');
+    return '';
+  }
   return `${appOrigin.replace(/\/$/, '')}${path}`;
 }
 
