@@ -6037,6 +6037,26 @@ a {
   line-height: 1.65;
 }
 
+.public-info-content ul {
+  margin: 8px 0 0 0;
+  padding-left: 24px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.public-info-content li {
+  margin-bottom: 8px;
+}
+
+.public-info-content a {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.public-info-content a:hover {
+  color: var(--primary-dark);
+}
+
 .public-info-links {
   display: flex;
   flex-wrap: wrap;
