@@ -24,6 +24,7 @@ import {
   type Provider,
 } from '../social-hub/shared';
 import { ReportingSourcesPanel } from '../analytics/ReportingSourcesPanel';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 type DistributionHandleRow = Database['public']['Tables']['distribution_handles']['Row'];
 
@@ -52,6 +53,7 @@ export function ConnectionsPage() {
   const [connectionError, setConnectionError] = useState('');
   const [connectingProvider, setConnectingProvider] = useState<Provider | null>(null);
   const [disconnectingProvider, setDisconnectingProvider] = useState<Provider | null>(null);
+  const [providerToDisconnect, setProviderToDisconnect] = useState<Provider | null>(null);
   const [discoveringProvider, setDiscoveringProvider] = useState<Provider | null>(null);
   const [formMessage, setFormMessage] = useState('');
   const [formError, setFormError] = useState('');
@@ -174,17 +176,22 @@ export function ConnectionsPage() {
     }
   }
 
-  async function handleDisconnectProvider(provider: Provider) {
-    setConnectionMessage('');
+  function confirmDisconnectProvider(provider: Provider) {
     if (!canManageConnections) {
       setConnectionError('Ask a workspace owner or admin to manage connections.');
       return;
     }
-    if (!window.confirm(`Disconnect ${channelName(provider)}? This will delete all stored tokens and credentials for this platform.`)) {
-      return;
-    }
+    setProviderToDisconnect(provider);
+  }
 
+  async function executeDisconnectProvider() {
+    const provider = providerToDisconnect;
+    if (!provider) return;
+
+    setProviderToDisconnect(null);
+    setConnectionMessage('');
     setConnectionError('');
+
     if (!supabase || !organization?.id) {
       setConnectionError('Connect Supabase before managing channels.');
       return;
@@ -391,7 +398,7 @@ export function ConnectionsPage() {
                         <button
                           type="button"
                           className="danger-button-subtle"
-                          onClick={() => handleDisconnectProvider(channel.provider)}
+                          onClick={() => confirmDisconnectProvider(channel.provider)}
                           disabled={!canManageConnections || disconnectingProvider === channel.provider || connectionsLoading}
                           title={!canManageConnections ? 'Only workspace owners and admins can manage connections' : 'Disconnect account and delete credentials'}
                         >
@@ -526,6 +533,17 @@ export function ConnectionsPage() {
           );
         })}
       </section>
+
+      <ConfirmDialog
+        isOpen={providerToDisconnect !== null}
+        title={`Disconnect ${providerToDisconnect ? channelName(providerToDisconnect) : ''}?`}
+        message={`This will immediately delete all stored OAuth tokens, access credentials, and per-handle credentials for ${providerToDisconnect ? channelName(providerToDisconnect) : 'this platform'}. You can reconnect at any time to restore publishing capabilities.`}
+        confirmText="Disconnect"
+        cancelText="Cancel"
+        onConfirm={executeDisconnectProvider}
+        onCancel={() => setProviderToDisconnect(null)}
+        isDangerous={true}
+      />
     </div>
   );
 }
