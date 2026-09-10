@@ -312,8 +312,15 @@ export function safeAppReturnPath(value: unknown, fallbackPath = '/social?connec
 }
 
 export function errorResponse(error: unknown) {
+  console.error('Edge function error:', error);
   const status = error instanceof HttpError ? error.status : 500;
-  const message = error instanceof Error ? error.message : 'Unexpected server error.';
+  const message = error instanceof Error
+    ? error.message
+    : (typeof error === 'object' && error !== null && 'message' in error && typeof (error as any).message === 'string')
+      ? (error as any).message
+      : typeof error === 'string'
+        ? error
+        : 'Unexpected server error.';
   return jsonResponse({ error: message }, status);
 }
 

@@ -66,14 +66,16 @@ Deno.serve(async (req) => {
       const config = providerConfig[provider];
       const secretsConfigured = config.requiredSecrets.every((name) => Boolean(Deno.env.get(name)));
       const handleCount = handleCountByProvider.get(provider) ?? 0;
-      const oauthConnected = account?.status === 'connected' && (provider !== 'instagram' || handleCount > 0);
+      const accountStatus = typeof account?.status === 'string' ? account.status : null;
+      const oauthConnected = accountStatus === 'connected' && (provider !== 'instagram' || handleCount > 0);
+      const needsReconnect = accountStatus === 'expired' || accountStatus === 'disabled' || (accountStatus === 'connected' && account?.token_status === 'revoked');
       const connected = oauthConnected || (
         config.authMode === 'server_token' && secretsConfigured && handleCount > 0
       );
 
       return {
         provider,
-        status: connected ? 'connected' : secretsConfigured ? 'ready_to_connect' : 'needs_setup',
+        status: connected ? 'connected' : needsReconnect ? 'needs_reconnect' : secretsConfigured ? 'ready_to_connect' : 'needs_setup',
         authMode: config.authMode,
         connectable: config.connectable,
         secretsConfigured,
@@ -81,6 +83,7 @@ Deno.serve(async (req) => {
         displayName: typeof account?.display_name === 'string' ? account.display_name : null,
         tokenStatus: typeof account?.token_status === 'string' ? account.token_status : null,
         lastSyncAt: typeof account?.last_sync_at === 'string' ? account.last_sync_at : null,
+        accountStatus,
       };
     });
 

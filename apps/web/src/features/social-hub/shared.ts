@@ -27,7 +27,7 @@ export type Handle = {
 
 export type ConnectionStatus = {
   provider: Provider;
-  status: 'connected' | 'ready_to_connect' | 'needs_setup';
+  status: 'connected' | 'needs_reconnect' | 'ready_to_connect' | 'needs_setup';
   authMode: 'oauth' | 'server_token' | 'ads_setup';
   connectable: boolean;
   secretsConfigured: boolean;
@@ -124,6 +124,7 @@ export function channelName(provider: Provider) {
 export function connectionStatusText(connection?: ConnectionStatus) {
   if (!connection) return 'Unknown';
   if (connection.status === 'connected') return 'Connected';
+  if (connection.status === 'needs_reconnect') return 'Reconnect needed';
   if (connection.status === 'ready_to_connect') return 'Ready';
   return 'Setup';
 }
@@ -131,6 +132,7 @@ export function connectionStatusText(connection?: ConnectionStatus) {
 export function connectionBadgeClass(connection?: ConnectionStatus) {
   if (!connection) return 'needs_setup';
   if (connection.status === 'connected') return 'ready';
+  if (connection.status === 'needs_reconnect') return 'needs_setup';
   if (connection.status === 'ready_to_connect') return 'review';
   return 'needs_setup';
 }
@@ -140,6 +142,7 @@ export function connectionActionText(connection?: ConnectionStatus) {
   if (!connection.secretsConfigured) return 'Setup';
   if (connection.authMode === 'server_token') return 'Add handle';
   if (connection.authMode === 'ads_setup') return 'Ads setup';
+  if (connection.status === 'needs_reconnect') return 'Reconnect';
   return connection.status === 'connected' ? 'Reconnect' : 'Connect';
 }
 
@@ -147,6 +150,7 @@ export function connectionHelperText(connection: ConnectionStatus | undefined, p
   if (!connection) return 'Status not loaded';
   if (!connection.secretsConfigured) return 'Server setup required';
   if (connection.status === 'connected') return connection.displayName ?? 'Ready to publish';
+  if (connection.status === 'needs_reconnect') return 'Connection expired or disabled';
   if (connection.authMode === 'server_token') return 'Server token ready';
   if (provider === 'google_ads') return 'Use Ads campaign flow';
   return 'Connect account';
@@ -162,7 +166,7 @@ function isConnectionStatus(value: unknown): value is ConnectionStatus {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
   return isProvider(record.provider)
-    && (record.status === 'connected' || record.status === 'ready_to_connect' || record.status === 'needs_setup')
+    && (record.status === 'connected' || record.status === 'needs_reconnect' || record.status === 'ready_to_connect' || record.status === 'needs_setup')
     && (record.authMode === 'oauth' || record.authMode === 'server_token' || record.authMode === 'ads_setup')
     && typeof record.connectable === 'boolean'
     && typeof record.secretsConfigured === 'boolean'

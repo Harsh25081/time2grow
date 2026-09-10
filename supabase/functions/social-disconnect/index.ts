@@ -27,6 +27,8 @@ Deno.serve(async (req) => {
     if (!provider) return jsonResponse({ error: 'Unsupported provider.' }, 400);
     if (!orgId) return jsonResponse({ error: 'Missing orgId.' }, 400);
 
+    console.log(`[social-disconnect] Disconnecting ${provider} for org ${orgId}`);
+
     await assertOrgRole(supabase, orgId, user.id, ['owner', 'admin']);
 
     // Delete OAuth connection tokens for this provider
@@ -36,20 +38,26 @@ Deno.serve(async (req) => {
       .eq('org_id', orgId)
       .eq('provider', provider);
 
-    if (oauthDeleteError) throw oauthDeleteError;
+    if (oauthDeleteError) {
+      console.error('[social-disconnect] OAuth delete error:', oauthDeleteError);
+      throw oauthDeleteError;
+    }
 
-    // Update integration account status to disconnected
+    // Update integration account status to disabled (not 'disconnected' - that's not in the CHECK constraint)
     const { error: accountUpdateError } = await supabase
       .from('integration_accounts')
       .update({
-        status: 'disconnected',
+        status: 'disabled',
         token_status: 'revoked',
         updated_at: new Date().toISOString(),
       })
       .eq('org_id', orgId)
       .eq('provider', provider);
 
-    if (accountUpdateError) throw accountUpdateError;
+    if (accountUpdateError) {
+      console.error('[social-disconnect] Account update error:', accountUpdateError);
+      throw accountUpdateError;
+    }
 
     // Delete per-handle credentials for this provider
     const { error: credentialsDeleteError } = await supabase
@@ -58,7 +66,10 @@ Deno.serve(async (req) => {
       .eq('org_id', orgId)
       .eq('provider', provider);
 
-    if (credentialsDeleteError) throw credentialsDeleteError;
+    if (credentialsDeleteError) {
+      console.error('[social-disconnect] Credentials delete error:', credentialsDeleteError);
+      throw credentialsDeleteError;
+    }
 
     // For Instagram, also clean up if it was connected via Facebook
     if (provider === 'instagram') {
@@ -68,7 +79,10 @@ Deno.serve(async (req) => {
         .eq('org_id', orgId)
         .eq('provider', 'instagram');
 
-      if (instagramCredentialsError) throw instagramCredentialsError;
+      if (instagramCredentialsError) {
+        console.error('[social-disconnect] Instagram credentials cleanup error:', instagramCredentialsError);
+        throw instagramCredentialsError;
+      }
     }
 
     // For Facebook, also clean up Instagram credentials if they exist
@@ -79,14 +93,20 @@ Deno.serve(async (req) => {
         .eq('org_id', orgId)
         .eq('provider', 'instagram');
 
-      if (instagramCredentialsError) throw instagramCredentialsError;
+      if (instagramCredentialsError) {
+        console.error('[social-disconnect] Instagram credentials cleanup error:', instagramCredentialsError);
+        throw instagramCredentialsError;
+      }
     }
+
+    console.log(`[social-disconnect] Successfully disconnected ${provider} for org ${orgId}`);
 
     return jsonResponse({
       success: true,
       message: `${provider} connection has been disconnected. All stored tokens have been deleted.`,
     });
   } catch (error) {
+    console.error('[social-disconnect] Error:', error);
     return errorResponse(error);
   }
 });
