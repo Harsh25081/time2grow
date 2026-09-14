@@ -11,6 +11,7 @@
     "preview:web": "npm --workspace apps/web run preview",
     "typecheck:web": "npm --workspace apps/web run typecheck",
     "lint:web": "npm --workspace apps/web run lint",
+    "setup:scheduled-publishing": "node scripts/setup-scheduled-publishing.js",
     "test:regressions": "node scripts/regression-checks.mjs",
     "test:functions": "deno test supabase/functions/ai-handler/ supabase/functions/_shared/security_test.ts",
     "check:functions": "deno check supabase/functions/ai-handler/index.ts supabase/functions/social-auth-start/index.ts supabase/functions/social-auth-callback/index.ts supabase/functions/social-connections-status/index.ts supabase/functions/social-discover-handles/index.ts supabase/functions/social-publish/index.ts supabase/functions/scheduled-jobs/index.ts supabase/functions/youtube-auth-start/index.ts supabase/functions/youtube-auth-callback/index.ts"

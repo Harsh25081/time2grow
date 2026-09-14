@@ -56,6 +56,7 @@ type QueueRun = {
   targetCount: number;
   status: PostStatus | 'local';
   createdAt: string;
+  scheduledAt: string | null;
   targetLabels: string[];
   targets: QueueTarget[];
 };
@@ -386,8 +387,8 @@ export function SocialHubPage() {
         const insertedTargets = mapTargetRowsToQueueTargets(targets ?? []);
 
         if (isScheduled && scheduledAt) {
-          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: 'queued' }, insertedTargets), ...current]);
-          setQueueMessage('Scheduled "' + title + '" for ' + formatDate(scheduledAt.toISOString()) + '.' + sourceNote);
+          setQueueRuns((current) => [mapPostToQueueRun({ ...post, status: 'queued', scheduled_at: scheduledAt.toISOString() }, insertedTargets), ...current]);
+          setQueueMessage('Scheduled "' + title + '" for ' + formatScheduledDate(scheduledAt.toISOString()) + '.' + sourceNote);
         } else {
           const publishResult = await publishPostNow(post.id);
           const nextStatus = publishResult.postStatus ?? 'queued';
@@ -407,6 +408,7 @@ export function SocialHubPage() {
           targetCount: selectedHandles.length,
           status: 'local',
           createdAt: new Date().toISOString(),
+          scheduledAt: null,
           targetLabels: selectedHandles.map((handle) => handle.label),
           targets: [],
         };
@@ -456,6 +458,32 @@ export function SocialHubPage() {
       setQueueError(errorMessage(error, `Could not retry ${target.label}.`));
     } finally {
       setRetryingTargetKey((current) => (current === retryKey ? '' : current));
+    }
+  }
+
+  async function publishScheduledPostNow(postId: string) {
+    setQueueError('');
+    setQueueing(true);
+
+    try {
+      const publishResult = await publishPostNow(postId);
+      const nextStatus = publishResult.postStatus ?? 'published';
+
+      setQueueRuns((current) => current.map((run) => {
+        if (run.id !== postId) return run;
+        const nextTargets = applyPublishResultToTargets(run.targets, publishResult);
+        return { ...run, status: nextStatus, scheduledAt: null, targetCount: nextTargets.length, targetLabels: nextTargets.map((item) => item.label), targets: nextTargets };
+      }));
+
+      if ((publishResult.failed ?? 0) > 0) {
+        setQueueError(publishResultSummary(publishResult));
+      } else {
+        setQueueMessage(`Published scheduled post to ${publishResult.published ?? 0} handles.`);
+      }
+    } catch (error) {
+      setQueueError(errorMessage(error, 'Could not publish scheduled post.'));
+    } finally {
+      setQueueing(false);
     }
   }
 
@@ -657,10 +685,25 @@ export function SocialHubPage() {
                   <div>
                     <strong>{row.title}</strong>
                     <span>{row.targetCount} targets - {row.targetLabels.slice(0, 3).join(', ')}{row.targetLabels.length > 3 ? '...' : ''}</span>
+                    {row.scheduledAt && row.status === 'queued' ? (
+                      <small style={{ display: 'block', marginTop: '4px', color: '#666' }}>
+                        ⏰ Scheduled for {formatScheduledDate(row.scheduledAt)}
+                      </small>
+                    ) : null}
                   </div>
                   <div>
                     <span>{statusText(row.status)}</span>
                     <small>{formatDate(row.createdAt)}</small>
+                    {row.status === 'queued' && row.scheduledAt ? (
+                      <button
+                        className="link-button"
+                        type="button"
+                        disabled={queueing}
+                        onClick={() => publishScheduledPostNow(row.id)}
+                      >
+                        {queueing ? 'Publishing...' : 'Publish now'}
+                      </button>
+                    ) : null}
                     {row.status === 'published' || row.status === 'partial_failed' ? (
                       <Link className="link-button" to={`/analytics/posts?postId=${row.id}`}>
                         View insights &amp; comments
@@ -668,16 +711,20 @@ export function SocialHubPage() {
                     ) : null}
                   </div>
                 </div>
-                {row.targets.length > 0 && (row.status === 'partial_failed' || row.status === 'failed') ? (
+                {row.targets.length > 0 && (row.status === 'queued' || row.status === 'partial_failed' || row.status === 'failed') ? (
                   <div className="queue-row__targets">
                     {row.targets.map((target) => {
                       const retryKey = `${row.id}:${target.id}`;
                       const isRetrying = retryingTargetKey === retryKey;
+                      const displayStatus = row.status === 'queued'
+                        ? (row.scheduledAt ? 'Scheduled' : 'Queued')
+                        : (target.status === 'published' ? 'Published' : target.status === 'failed' ? 'Failed' : target.status === 'rate_limited' ? 'Rate limited' : target.status);
+
                       return (
                         <div className={`queue-target queue-target--${target.status}`} key={target.id}>
                           <span className="queue-target__label">{target.label}</span>
-                          <span className={`handle-status ${target.status === 'published' ? 'ready' : isRetryableTargetStatus(target.status) ? 'needs_setup' : 'review'}`}>
-                            {target.status === 'published' ? 'Published' : target.status === 'failed' ? 'Failed' : target.status === 'rate_limited' ? 'Rate limited' : target.status}
+                          <span className={`handle-status ${target.status === 'published' ? 'ready' : row.status === 'queued' ? 'pending' : isRetryableTargetStatus(target.status) ? 'needs_setup' : 'review'}`}>
+                            {displayStatus}
                           </span>
                           {isRetryableTargetStatus(target.status) ? (
                             <button
@@ -819,6 +866,7 @@ function mapPostToQueueRun(post: SocialPostRow, targets: QueueTarget[]): QueueRu
     targetCount: targets.length,
     status: post.status,
     createdAt: post.created_at,
+    scheduledAt: post.scheduled_at ?? null,
     targetLabels: targets.map((target) => target.label),
     targets,
   };
@@ -874,6 +922,26 @@ function statusText(status: QueueRun['status']) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+
+function formatScheduledDate(value: string) {
+  const date = new Date(value);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMinutes < 60) {
+    return `in ${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
+  }
+  if (diffHours < 24) {
+    return `in ${diffHours} hour${diffHours !== 1 ? 's' : ''}`;
+  }
+  if (diffDays < 7) {
+    return `in ${diffDays} day${diffDays !== 1 ? 's' : ''} (${formatDate(value)})`;
+  }
+  return formatDate(value);
 }
 
 function parseScheduledAt(value: string) {

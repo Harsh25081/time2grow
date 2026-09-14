@@ -102,6 +102,7 @@ http://127.0.0.1:5173
 npm run dev:web
 npm run build:web
 npm run typecheck:web
+npm run setup:scheduled-publishing   # one-command cron job setup
 npm audit
 ```
 
@@ -201,8 +202,81 @@ Cloud Edge Functions currently include:
 - `social-auth-start`
 - `social-auth-callback`
 - `social-publish`
+- `scheduled-jobs`
 
 Keep service-role keys, provider secrets, OpenAI keys, and webhook signing secrets out of frontend code. Frontend Vite variables must only contain public values such as Supabase URL, Supabase anon key, and local webhook URL.
+
+## Scheduled Publishing Setup
+
+Automatically publishes scheduled social media posts at their scheduled time using Supabase `pg_cron`. A cron job runs every minute, claims due posts atomically, and delivers them through the `social-publish` Edge Function.
+
+### Prerequisites
+
+- Supabase CLI installed (`npx supabase --version` — included in devDependencies)
+- Supabase project linked (`supabase link --project-ref YOUR_PROJECT_REF`)
+
+### Setup
+
+1. Copy the environment template and fill in your secrets:
+
+   ```bash
+   copy .env.example .env
+   ```
+
+   Fill in `.env`:
+
+   ```env
+   SUPABASE_SERVICE_ROLE_KEY=<from Supabase Dashboard → Settings → API → service_role>
+   VITE_SUPABASE_ANON_KEY=<from Supabase Dashboard → Settings → API → anon public>
+   SCHEDULED_JOBS_SECRET=<leave blank to auto-generate>
+   ```
+
+2. Run the setup script:
+
+   ```bash
+   node scripts/setup-scheduled-publishing.js
+   ```
+
+   This single command will:
+   - Push database migrations (`pg_cron`, `pg_net`, `supabase_vault` extensions)
+   - Set Edge Function secrets via `supabase secrets set`
+   - Deploy `scheduled-jobs` and `social-publish` Edge Functions
+   - Store credentials in Supabase Vault
+   - Schedule the pg_cron job (runs every minute)
+   - Verify the cron job is active
+
+### Verify
+
+After setup, check the cron job in the Supabase SQL Editor:
+
+```sql
+SELECT * FROM cron.job WHERE jobname = 'scheduled-social-posts';
+```
+
+Check recent runs:
+
+```sql
+SELECT * FROM cron.job_run_details
+WHERE jobid = (SELECT jobid FROM cron.job WHERE jobname = 'scheduled-social-posts')
+ORDER BY start_time DESC LIMIT 10;
+```
+
+### Test
+
+1. Go to Distribution Hub (`/social`).
+2. Create a post and schedule it 2–3 minutes ahead.
+3. Wait for the scheduled time and refresh.
+4. The post should auto-publish.
+
+### Troubleshooting
+
+If posts are not auto-publishing:
+
+1. **Check cron job is active** — run the verify SQL above.
+2. **Check cron run history** — look for errors in `cron.job_run_details`.
+3. **Check Edge Function logs** — go to Edge Functions → Logs → filter by `scheduled-jobs`.
+4. **Verify secrets** — Edge Functions → Secrets should list `SCHEDULED_JOBS_SECRET`.
+5. **Re-run setup** — the script is idempotent and safe to run again: `node scripts/setup-scheduled-publishing.js`.
 
 ## Project Structure
 
