@@ -81,7 +81,7 @@ function youtubeAuthUrl(stateToken: string) {
 }
 
 function metaAuthUrl(stateToken: string) {
-  const scopes = Deno.env.get('FACEBOOK_REQUIRED_SCOPES') || 'pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish';
+  const scopes = Deno.env.get('FACEBOOK_REQUIRED_SCOPES') || 'pages_show_list,pages_read_engagement,pages_manage_posts,business_management,instagram_basic,instagram_content_publish,leads_retrieval,pages_manage_ads';
   const authUrl = new URL('https://www.facebook.com/v21.0/dialog/oauth');
   authUrl.searchParams.set('client_id', requiredEnv('META_CLIENT_ID'));
   authUrl.searchParams.set('redirect_uri', callbackUrl('facebook'));

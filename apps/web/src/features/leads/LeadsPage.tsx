@@ -5,6 +5,7 @@ import type { Database, Json } from '../../types/database';
 import { useAuth } from '../auth/AuthProvider';
 import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
 import { reportingSourceName, sourceStatusLabel } from '../analytics/reportingSources';
+import { edgeFunctionErrorMessage } from '../social-hub/shared';
 import { parseLeadFile, parseSourceLeads, type ParsedLead } from './leadImport';
 
 type LeadRow = Database['public']['Tables']['leads']['Row'];
@@ -434,9 +435,36 @@ export function LeadsPage() {
       return;
     }
 
+    if (!supabase || !organization?.id) {
+      setError('Connect Supabase to sync live leads.');
+      return;
+    }
+
     setSyncing(true);
     try {
-      const parsed = parseSourceLeads(source.metadata, sourceKeyToLeadSource(source.source_key), source.source_key);
+      let parsed: ReturnType<typeof parseSourceLeads>;
+
+      if (source.source_key === 'meta_ads' || source.source_key === 'facebook' || source.source_key === 'instagram') {
+        const { data: edgeData, error: edgeError } = await supabase.functions.invoke('social-sync-leads', {
+          body: { orgId: organization.id, provider: source.source_key },
+        });
+
+        if (edgeError) {
+          throw new Error(await edgeFunctionErrorMessage(edgeError, 'social-sync-leads'));
+        }
+
+        const rawLeads = edgeData?.leads;
+        if (!Array.isArray(rawLeads) || rawLeads.length === 0) {
+          const emptyMsg = edgeData?.message || `${source.display_name} has no lead form submissions found on connected Facebook pages.`;
+          setError(emptyMsg);
+          return;
+        }
+
+        parsed = parseSourceLeads({ leads: rawLeads } as unknown as Json, sourceKeyToLeadSource(source.source_key), source.source_key);
+      } else {
+        parsed = parseSourceLeads(source.metadata, sourceKeyToLeadSource(source.source_key), source.source_key);
+      }
+
       if (parsed.rows.length === 0) {
         setError(`${source.display_name} is connected in Settings / Connections, but it has no lead-form rows available yet. Import the platform export sheet here until that provider starts sending lead payloads into this source.`);
         return;

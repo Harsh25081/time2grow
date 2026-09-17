@@ -32,17 +32,17 @@ type RawRow = Record<string, unknown>;
 
 const headerAliases = {
   fullName: ['name', 'full name', 'lead name', 'customer name', 'contact name', 'first name'],
-  company: ['company', 'business', 'brand', 'organization', 'organisation'],
+  company: ['company', 'company name', 'business', 'business name', 'brand', 'organization', 'organisation', 'organization name'],
   email: ['email', 'email address', 'e-mail'],
-  phone: ['phone', 'mobile', 'phone number', 'contact number', 'whatsapp', 'whatsapp number'],
+  phone: ['phone', 'mobile', 'phone number', 'contact number', 'whatsapp', 'whatsapp number', 'phone number string'],
   source: ['source', 'lead source', 'platform', 'channel'],
   status: ['status', 'stage', 'pipeline status'],
   leadType: ['lead type', 'type', 'temperature', 'lead temperature', 'hot warm cold'],
   leadScore: ['score', 'lead score', 'quality score'],
   estimatedValue: ['value', 'estimated value', 'deal value', 'budget', 'revenue'],
   nextFollowUpAt: ['follow up', 'follow-up', 'next follow up', 'next follow-up', 'follow up date'],
-  notes: ['notes', 'note', 'message', 'requirement', 'comments'],
-  campaignName: ['campaign', 'campaign name', 'ad campaign', 'utm campaign'],
+  notes: ['notes', 'note', 'message', 'requirement', 'comments', 'job title'],
+  campaignName: ['campaign', 'campaign name', 'ad campaign', 'utm campaign', 'ad name'],
   externalLeadId: ['id', 'lead id', 'external id', 'form id', 'submission id'],
 };
 
