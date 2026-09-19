@@ -1,23 +1,55 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Archive, CalendarDays, CheckCircle2, Loader2, Pencil, RefreshCw, RotateCcw, Save, Target, Upload, X } from 'lucide-react';
-import { supabase } from '../../lib/supabase';
-import type { Database, Json } from '../../types/database';
-import { useAuth } from '../auth/AuthProvider';
-import { BrandDnaSelect, SELF_BRAND_ID, useBrandDna } from '../business-dna/useBrandDna';
-import { reportingSourceName, sourceStatusLabel } from '../analytics/reportingSources';
-import { edgeFunctionErrorMessage } from '../social-hub/shared';
-import { parseLeadFile, parseSourceLeads, type ParsedLead } from './leadImport';
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  Archive,
+  CalendarDays,
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Target,
+  Upload,
+  X,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import type { Database, Json } from "../../types/database";
+import { useAuth } from "../auth/AuthProvider";
+import {
+  BrandDnaSelect,
+  SELF_BRAND_ID,
+  useBrandDna,
+} from "../business-dna/useBrandDna";
+import {
+  reportingSourceName,
+  sourceStatusLabel,
+} from "../analytics/reportingSources";
+import { edgeFunctionErrorMessage } from "../social-hub/shared";
+import { parseLeadFile, parseSourceLeads, type ParsedLead } from "./leadImport";
 
-type LeadRow = Database['public']['Tables']['leads']['Row'];
-type LeadStatus = LeadRow['status'];
-type LeadSource = LeadRow['source'];
-type LeadType = LeadRow['lead_type'];
-type LeadFilter = 'all' | LeadStatus | 'follow_up';
-type LeadTypeFilter = 'all' | LeadType;
-type LeadSourceFilter = 'all' | LeadSource;
-type IntakeMode = 'none' | 'manual' | 'import' | 'sync';
-type CampaignRow = Pick<Database['public']['Tables']['campaigns']['Row'], 'id' | 'name' | 'status' | 'client_business_dna_id'>;
-type AnalyticsSourceRow = Database['public']['Tables']['analytics_sources']['Row'];
+type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
+type LeadStatus = LeadRow["status"];
+type LeadSource = LeadRow["source"];
+type LeadType = LeadRow["lead_type"];
+type LeadFilter = "all" | LeadStatus | "follow_up";
+type LeadTypeFilter = "all" | LeadType;
+type LeadSourceFilter = "all" | LeadSource;
+type IntakeMode = "none" | "manual" | "import" | "sync";
+type CampaignRow = Pick<
+  Database["public"]["Tables"]["campaigns"]["Row"],
+  "id" | "name" | "status" | "client_business_dna_id"
+>;
+type AnalyticsSourceRow =
+  Database["public"]["Tables"]["analytics_sources"]["Row"];
+
+type LeadFormMeta = {
+  id: string;
+  name: string;
+  pageId: string;
+  pageName: string;
+  status: string;
+  leadsCount: number;
+};
 
 type LeadForm = {
   fullName: string;
@@ -35,118 +67,189 @@ type LeadForm = {
   campaignId: string;
 };
 
-const writerRoles = ['owner', 'admin', 'editor'] as const;
+const writerRoles = ["owner", "admin", "editor"] as const;
 
 const statusOptions: Array<{ value: LeadStatus; label: string }> = [
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'proposal', label: 'Proposal' },
-  { value: 'won', label: 'Won' },
-  { value: 'lost', label: 'Lost' },
-  { value: 'archived', label: 'Archived' },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "proposal", label: "Proposal" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
+  { value: "archived", label: "Archived" },
 ];
 
 const sourceOptions: Array<{ value: LeadSource; label: string }> = [
-  { value: 'manual', label: 'Manual' },
-  { value: 'instagram', label: 'Instagram' },
-  { value: 'facebook', label: 'Facebook' },
-  { value: 'whatsapp', label: 'WhatsApp' },
-  { value: 'website', label: 'Website' },
-  { value: 'google_forms', label: 'Google Forms' },
-  { value: 'referrals', label: 'Referrals' },
-  { value: 'imports', label: 'Imports' },
-  { value: 'comments', label: 'Comments' },
-  { value: 'dms', label: 'DMs' },
-  { value: 'other', label: 'Other' },
+  { value: "manual", label: "Manual" },
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook", label: "Facebook" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "website", label: "Website" },
+  { value: "google_forms", label: "Google Forms" },
+  { value: "referrals", label: "Referrals" },
+  { value: "imports", label: "Imports" },
+  { value: "comments", label: "Comments" },
+  { value: "dms", label: "DMs" },
+  { value: "other", label: "Other" },
 ];
 
 const legacySourceLabels: Partial<Record<LeadSource, string>> = {
-  social: 'Social',
-  ads: 'Ads',
-  referral: 'Referral',
-  campaign: 'Campaign',
-  event: 'Event',
+  social: "Social",
+  ads: "Ads",
+  referral: "Referral",
+  campaign: "Campaign",
+  event: "Event",
 };
 
-const leadTypeOptions: Array<{ value: LeadType; label: string; score: string }> = [
-  { value: 'hot', label: 'Hot', score: '80' },
-  { value: 'warm', label: 'Warm', score: '50' },
-  { value: 'cold', label: 'Cold', score: '20' },
+const leadTypeOptions: Array<{
+  value: LeadType;
+  label: string;
+  score: string;
+}> = [
+  { value: "hot", label: "Hot", score: "80" },
+  { value: "warm", label: "Warm", score: "50" },
+  { value: "cold", label: "Cold", score: "20" },
 ];
 
 const filters: Array<{ value: LeadFilter; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: 'new', label: 'New' },
-  { value: 'contacted', label: 'Contacted' },
-  { value: 'qualified', label: 'Qualified' },
-  { value: 'proposal', label: 'Proposal' },
-  { value: 'follow_up', label: 'Follow-up' },
-  { value: 'won', label: 'Won' },
-  { value: 'lost', label: 'Lost' },
+  { value: "all", label: "All" },
+  { value: "new", label: "New" },
+  { value: "contacted", label: "Contacted" },
+  { value: "qualified", label: "Qualified" },
+  { value: "proposal", label: "Proposal" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "won", label: "Won" },
+  { value: "lost", label: "Lost" },
 ];
 
 const nextStatus: Partial<Record<LeadStatus, LeadStatus>> = {
-  new: 'contacted',
-  contacted: 'qualified',
-  qualified: 'proposal',
-  proposal: 'won',
+  new: "contacted",
+  contacted: "qualified",
+  qualified: "proposal",
+  proposal: "won",
 };
 
 const emptyForm: LeadForm = {
-  fullName: '',
-  company: '',
-  email: '',
-  phone: '',
-  source: 'manual',
-  status: 'new',
-  leadType: 'warm',
-  leadScore: '25',
-  estimatedValue: '',
-  nextFollowUpAt: '',
-  notes: '',
+  fullName: "",
+  company: "",
+  email: "",
+  phone: "",
+  source: "manual",
+  status: "new",
+  leadType: "warm",
+  leadScore: "25",
+  estimatedValue: "",
+  nextFollowUpAt: "",
+  notes: "",
   brandSelectionId: SELF_BRAND_ID,
-  campaignId: '',
+  campaignId: "",
 };
+
+export function getLeadFormInfo(lead: LeadRow): {
+  formName?: string;
+  formId?: string;
+  pageName?: string;
+  adName?: string;
+} {
+  if (!lead.metadata || typeof lead.metadata !== "object" || Array.isArray(lead.metadata)) return {};
+  const meta = lead.metadata as Record<string, unknown>;
+  const parsed = meta.parsed && typeof meta.parsed === "object" && !Array.isArray(meta.parsed)
+    ? (meta.parsed as Record<string, unknown>)
+    : null;
+  const raw = (parsed?.raw && typeof parsed.raw === "object" && !Array.isArray(parsed.raw)
+    ? (parsed.raw as Record<string, unknown>)
+    : meta.raw && typeof meta.raw === "object" && !Array.isArray(meta.raw)
+    ? (meta.raw as Record<string, unknown>)
+    : null);
+
+  const formName =
+    (typeof raw?.["form_name"] === "string" && raw["form_name"]) ||
+    (typeof raw?.["form name"] === "string" && raw["form name"]) ||
+    (typeof meta["form_name"] === "string" && meta["form_name"]) ||
+    (typeof parsed?.["form_name"] === "string" && parsed["form_name"]) ||
+    undefined;
+
+  const formId =
+    (typeof raw?.["form_id"] === "string" && raw["form_id"]) ||
+    (typeof raw?.["form id"] === "string" && raw["form id"]) ||
+    (typeof meta["form_id"] === "string" && meta["form_id"]) ||
+    undefined;
+
+  const pageName =
+    (typeof raw?.["page_name"] === "string" && raw["page_name"]) ||
+    (typeof raw?.["page name"] === "string" && raw["page name"]) ||
+    (typeof meta["page_name"] === "string" && meta["page_name"]) ||
+    undefined;
+
+  const adName =
+    (typeof raw?.["ad_name"] === "string" && raw["ad_name"]) ||
+    (typeof raw?.["ad name"] === "string" && raw["ad name"]) ||
+    (typeof meta["ad_name"] === "string" && meta["ad_name"]) ||
+    undefined;
+
+  return { formName, formId, pageName, adName };
+}
 
 export function LeadsPage() {
   const { organization, user, membership } = useAuth();
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
-  const [analyticsSources, setAnalyticsSources] = useState<AnalyticsSourceRow[]>([]);
+  const [analyticsSources, setAnalyticsSources] = useState<
+    AnalyticsSourceRow[]
+  >([]);
   const [form, setForm] = useState<LeadForm>(emptyForm);
-  const [importBrandSelectionId, setImportBrandSelectionId] = useState(SELF_BRAND_ID);
-  const [importCampaignId, setImportCampaignId] = useState('');
-  const [importSource, setImportSource] = useState<LeadSource>('imports');
+  const [importBrandSelectionId, setImportBrandSelectionId] =
+    useState(SELF_BRAND_ID);
+  const [importCampaignId, setImportCampaignId] = useState("");
+  const [importSource, setImportSource] = useState<LeadSource>("imports");
   const [importPreview, setImportPreview] = useState<ParsedLead[]>([]);
-  const [importFileName, setImportFileName] = useState('');
+  const [importFileName, setImportFileName] = useState("");
   const [importSkipped, setImportSkipped] = useState(0);
-  const [selectedSourceId, setSelectedSourceId] = useState('');
-  const [editingId, setEditingId] = useState('');
-  const [intakeMode, setIntakeMode] = useState<IntakeMode>('none');
-  const [filter, setFilter] = useState<LeadFilter>('all');
-  const [leadTypeFilter, setLeadTypeFilter] = useState<LeadTypeFilter>('all');
-  const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>('all');
+  const [selectedSourceId, setSelectedSourceId] = useState("");
+  const [leadForms, setLeadForms] = useState<LeadFormMeta[]>([]);
+  const [selectedFormId, setSelectedFormId] = useState<string>("all");
+  const [customFormId, setCustomFormId] = useState<string>("");
+  const [formDiscoveryInfo, setFormDiscoveryInfo] = useState<{
+    pagesChecked: Array<{ id: string; name: string }>;
+    errors?: string[];
+  } | null>(null);
+  const [loadingForms, setLoadingForms] = useState<boolean>(false);
+  const [leadFormFilter, setLeadFormFilter] = useState<string>("all");
+  const [editingId, setEditingId] = useState("");
+  const [intakeMode, setIntakeMode] = useState<IntakeMode>("none");
+  const [filter, setFilter] = useState<LeadFilter>("all");
+  const [leadTypeFilter, setLeadTypeFilter] = useState<LeadTypeFilter>("all");
+  const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>("all");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [updatingId, setUpdatingId] = useState('');
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [updatingId, setUpdatingId] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const canWrite = writerRoles.some((role) => role === membership?.role);
   const readOnly = Boolean(membership?.role) && !canWrite;
-  const isAgency = organization?.org_type === 'agency';
-  const { clients } = useBrandDna(organization?.id, isAgency);
-  const clientNameById = useMemo(() => new Map(clients.map((client) => [client.id, client.name])), [clients]);
-  const campaignNameById = useMemo(() => new Map(campaigns.map((campaign) => [campaign.id, campaign.name])), [campaigns]);
+  const isAgency = organization?.org_type === "agency";
+  const {
+    clients,
+    selectedId: selectedBrandId,
+    setSelectedId: setSelectedBrandId,
+  } = useBrandDna(organization?.id, isAgency);
+  const clientNameById = useMemo(
+    () => new Map(clients.map((client) => [client.id, client.name])),
+    [clients],
+  );
+  const campaignNameById = useMemo(
+    () => new Map(campaigns.map((campaign) => [campaign.id, campaign.name])),
+    [campaigns],
+  );
 
   useEffect(() => {
     let active = true;
 
     async function load() {
       setLoading(true);
-      setError('');
+      setError("");
 
       if (!supabase || !organization?.id) {
         setLeads([]);
@@ -161,30 +264,37 @@ export function LeadsPage() {
         { data: sourceData, error: sourceError },
       ] = await Promise.all([
         supabase
-          .from('leads')
-          .select('*')
-          .eq('org_id', organization.id)
-          .order('updated_at', { ascending: false })
-          .order('id', { ascending: false })
+          .from("leads")
+          .select("*")
+          .eq("org_id", organization.id)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
           .limit(150),
         supabase
-          .from('campaigns')
-          .select('id, name, status, client_business_dna_id')
-          .eq('org_id', organization.id)
-          .neq('status', 'archived')
-          .order('updated_at', { ascending: false })
+          .from("campaigns")
+          .select("id, name, status, client_business_dna_id")
+          .eq("org_id", organization.id)
+          .neq("status", "archived")
+          .order("updated_at", { ascending: false })
           .limit(100),
         supabase
-          .from('analytics_sources')
-          .select('*')
-          .eq('org_id', organization.id)
-          .order('updated_at', { ascending: false }),
+          .from("analytics_sources")
+          .select("*")
+          .eq("org_id", organization.id)
+          .order("updated_at", { ascending: false }),
       ]);
 
       if (!active) return;
-      if (leadError) setError(errorMessage(leadError, 'Could not load leads.'));
-      if (campaignError) setError(errorMessage(campaignError, 'Could not load campaigns.'));
-      if (sourceError) setError(errorMessage(sourceError, 'Could not load connected marketing sources.'));
+      if (leadError) setError(errorMessage(leadError, "Could not load leads."));
+      if (campaignError)
+        setError(errorMessage(campaignError, "Could not load campaigns."));
+      if (sourceError)
+        setError(
+          errorMessage(
+            sourceError,
+            "Could not load connected marketing sources.",
+          ),
+        );
       setLeads(leadData ?? []);
       setCampaigns(campaignData ?? []);
       setAnalyticsSources(sourceData ?? []);
@@ -198,92 +308,216 @@ export function LeadsPage() {
   }, [organization?.id]);
 
   const campaignOptions = useMemo(
-    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, form.brandSelectionId)),
+    () =>
+      campaigns.filter((campaign) =>
+        campaignMatchesBrand(campaign, isAgency, form.brandSelectionId),
+      ),
     [campaigns, form.brandSelectionId, isAgency],
   );
   const importCampaignOptions = useMemo(
-    () => campaigns.filter((campaign) => campaignMatchesBrand(campaign, isAgency, importBrandSelectionId)),
+    () =>
+      campaigns.filter((campaign) =>
+        campaignMatchesBrand(campaign, isAgency, importBrandSelectionId),
+      ),
     [campaigns, importBrandSelectionId, isAgency],
   );
   const connectedLeadSources = useMemo(
-    () => analyticsSources.filter((source) => ['connected', 'syncing'].includes(source.status)),
+    () =>
+      analyticsSources.filter((source) =>
+        ["connected", "syncing"].includes(source.status),
+      ),
     [analyticsSources],
   );
 
   useEffect(() => {
-    if (form.campaignId && !campaignOptions.some((campaign) => campaign.id === form.campaignId)) {
-      updateForm('campaignId', '');
+    if (
+      form.campaignId &&
+      !campaignOptions.some((campaign) => campaign.id === form.campaignId)
+    ) {
+      updateForm("campaignId", "");
     }
   }, [campaignOptions, form.campaignId]);
 
   useEffect(() => {
-    if (importCampaignId && !importCampaignOptions.some((campaign) => campaign.id === importCampaignId)) {
-      setImportCampaignId('');
+    if (
+      importCampaignId &&
+      !importCampaignOptions.some(
+        (campaign) => campaign.id === importCampaignId,
+      )
+    ) {
+      setImportCampaignId("");
     }
   }, [importCampaignId, importCampaignOptions]);
 
+  useEffect(() => {
+    if (intakeMode !== "sync" || !supabase || !organization?.id) return;
+    const source = analyticsSources.find((item) => item.id === selectedSourceId);
+    if (!source) return;
+
+    if (["meta_ads", "facebook", "instagram"].includes(source.source_key)) {
+      let active = true;
+      setLoadingForms(true);
+      setFormDiscoveryInfo(null);
+
+      supabase.functions
+        .invoke("social-sync-leads", {
+          body: {
+            orgId: organization.id,
+            provider: source.source_key,
+            action: "list_forms",
+          },
+        })
+        .then(({ data, error: invokeError }) => {
+          if (!active) return;
+          if (invokeError) {
+            console.warn("Could not list lead forms:", invokeError);
+            setLeadForms([]);
+          } else if (Array.isArray(data?.forms)) {
+            setLeadForms(data.forms);
+            if (Array.isArray(data?.pagesChecked)) {
+              setFormDiscoveryInfo({
+                pagesChecked: data.pagesChecked,
+                errors: Array.isArray(data?.errors) ? data.errors : undefined,
+              });
+            }
+          } else {
+            setLeadForms([]);
+          }
+        })
+        .catch((err) => {
+          if (!active) return;
+          console.warn("Lead forms fetch error:", err);
+          setLeadForms([]);
+        })
+        .finally(() => {
+          if (active) setLoadingForms(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    } else {
+      setLeadForms([]);
+      setSelectedFormId("all");
+      setCustomFormId("");
+      setFormDiscoveryInfo(null);
+    }
+  }, [intakeMode, selectedSourceId, analyticsSources, organization?.id]);
+
+  const brandLeads = useMemo(() => {
+    return leads.filter((lead) => {
+      if (!isAgency) return true;
+      if (selectedBrandId === SELF_BRAND_ID)
+        return !lead.client_business_dna_id;
+      return lead.client_business_dna_id === selectedBrandId;
+    });
+  }, [leads, isAgency, selectedBrandId]);
+
+  const availableLeadForms = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; pageName?: string }>();
+    for (const lead of brandLeads) {
+      const info = getLeadFormInfo(lead);
+      if (info.formId || info.formName) {
+        const key = info.formId || info.formName || "";
+        if (!map.has(key)) {
+          map.set(key, {
+            id: key,
+            name: info.formName || `Form (${info.formId})`,
+            pageName: info.pageName,
+          });
+        }
+      }
+    }
+    return Array.from(map.values());
+  }, [brandLeads]);
+
   const counts = useMemo(() => {
-    const next = new Map<LeadFilter, number>([['all', leads.length]]);
-    for (const lead of leads) next.set(lead.status, (next.get(lead.status) ?? 0) + 1);
-    next.set('follow_up', leads.filter((lead) => isFollowUpDue(lead)).length);
+    const next = new Map<LeadFilter, number>([["all", brandLeads.length]]);
+    for (const lead of brandLeads)
+      next.set(lead.status, (next.get(lead.status) ?? 0) + 1);
+    next.set(
+      "follow_up",
+      brandLeads.filter((lead) => isFollowUpDue(lead)).length,
+    );
     return next;
-  }, [leads]);
+  }, [brandLeads]);
 
   const visibleLeads = useMemo(() => {
-    return leads.filter((lead) => {
-      if (filter === 'follow_up' && !isFollowUpDue(lead)) return false;
-      if (filter !== 'all' && filter !== 'follow_up' && lead.status !== filter) return false;
-      if (leadTypeFilter !== 'all' && lead.lead_type !== leadTypeFilter) return false;
-      if (sourceFilter !== 'all' && lead.source !== sourceFilter) return false;
+    return brandLeads.filter((lead) => {
+      if (filter === "follow_up" && !isFollowUpDue(lead)) return false;
+      if (filter !== "all" && filter !== "follow_up" && lead.status !== filter)
+        return false;
+      if (leadTypeFilter !== "all" && lead.lead_type !== leadTypeFilter)
+        return false;
+      if (sourceFilter !== "all" && lead.source !== sourceFilter) return false;
+      if (leadFormFilter !== "all") {
+        const info = getLeadFormInfo(lead);
+        if (info.formId !== leadFormFilter && info.formName !== leadFormFilter)
+          return false;
+      }
       return true;
     });
-  }, [filter, leadTypeFilter, leads, sourceFilter]);
+  }, [filter, leadTypeFilter, brandLeads, sourceFilter, leadFormFilter]);
 
   const summary = useMemo(() => {
-    const open = leads.filter((lead) => !['won', 'lost', 'archived'].includes(lead.status)).length;
-    const hot = leads.filter((lead) => lead.lead_type === 'hot' && lead.status !== 'archived').length;
-    const warm = leads.filter((lead) => lead.lead_type === 'warm' && lead.status !== 'archived').length;
-    const cold = leads.filter((lead) => lead.lead_type === 'cold' && lead.status !== 'archived').length;
+    const open = brandLeads.filter(
+      (lead) => !["won", "lost", "archived"].includes(lead.status),
+    ).length;
+    const hot = brandLeads.filter(
+      (lead) => lead.lead_type === "hot" && lead.status !== "archived",
+    ).length;
+    const warm = brandLeads.filter(
+      (lead) => lead.lead_type === "warm" && lead.status !== "archived",
+    ).length;
+    const cold = brandLeads.filter(
+      (lead) => lead.lead_type === "cold" && lead.status !== "archived",
+    ).length;
     return { open, hot, warm, cold };
-  }, [leads]);
+  }, [brandLeads]);
 
   function updateForm<K extends keyof LeadForm>(key: K, value: LeadForm[K]) {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
   function resetForm() {
-    setForm(emptyForm);
-    setEditingId('');
+    setForm({
+      ...emptyForm,
+      brandSelectionId: isAgency ? selectedBrandId : SELF_BRAND_ID,
+    });
+    setEditingId("");
   }
 
   function startCreate() {
     resetForm();
-    setIntakeMode('manual');
-    setMessage('');
-    setError('');
+    setIntakeMode("manual");
+    setMessage("");
+    setError("");
   }
 
   function startEdit(lead: LeadRow) {
     if (!canWrite) return;
-    setIntakeMode('manual');
+    setIntakeMode("manual");
     setEditingId(lead.id);
     setForm({
       fullName: lead.full_name,
-      company: lead.company ?? '',
-      email: lead.email ?? '',
-      phone: lead.phone ?? '',
+      company: lead.company ?? "",
+      email: lead.email ?? "",
+      phone: lead.phone ?? "",
       source: lead.source,
       status: lead.status,
       leadType: lead.lead_type,
       leadScore: String(lead.lead_score),
-      estimatedValue: lead.estimated_value === null ? '' : String(lead.estimated_value),
-      nextFollowUpAt: lead.next_follow_up_at ? lead.next_follow_up_at.slice(0, 10) : '',
-      notes: lead.notes ?? '',
+      estimatedValue:
+        lead.estimated_value === null ? "" : String(lead.estimated_value),
+      nextFollowUpAt: lead.next_follow_up_at
+        ? lead.next_follow_up_at.slice(0, 10)
+        : "",
+      notes: lead.notes ?? "",
       brandSelectionId: lead.client_business_dna_id ?? SELF_BRAND_ID,
-      campaignId: lead.campaign_id ?? '',
+      campaignId: lead.campaign_id ?? "",
     });
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -291,19 +525,19 @@ export function LeadsPage() {
     if (!supabase || !organization?.id || !user?.id) return;
 
     if (!canWrite) {
-      setError('Ask an owner, admin, or editor to manage leads here.');
+      setError("Ask an owner, admin, or editor to manage leads here.");
       return;
     }
 
     const fullName = form.fullName.trim();
     if (!fullName) {
-      setError('Enter the lead name first.');
+      setError("Enter the lead name first.");
       return;
     }
 
     setSaving(true);
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
 
     const payload = {
       full_name: fullName,
@@ -315,83 +549,100 @@ export function LeadsPage() {
       lead_type: form.leadType,
       lead_score: boundedNumber(form.leadScore, 0, 100, 0),
       estimated_value: nullableMoney(form.estimatedValue),
-      next_follow_up_at: form.nextFollowUpAt ? new Date(form.nextFollowUpAt).toISOString() : null,
+      next_follow_up_at: form.nextFollowUpAt
+        ? new Date(form.nextFollowUpAt).toISOString()
+        : null,
       notes: form.notes.trim() || null,
-      client_business_dna_id: isAgency && form.brandSelectionId !== SELF_BRAND_ID ? form.brandSelectionId : null,
+      client_business_dna_id:
+        isAgency && form.brandSelectionId !== SELF_BRAND_ID
+          ? form.brandSelectionId
+          : null,
       campaign_id: form.campaignId || null,
     };
 
     try {
       if (editingId) {
         const { data, error: updateError } = await supabase
-          .from('leads')
+          .from("leads")
           .update(payload)
-          .eq('id', editingId)
-          .eq('org_id', organization.id)
-          .select('*')
+          .eq("id", editingId)
+          .eq("org_id", organization.id)
+          .select("*")
           .single();
         if (updateError) throw updateError;
-        setLeads((current) => current.map((lead) => (lead.id === data.id ? data : lead)));
-      setMessage('Lead updated.');
+        setLeads((current) =>
+          current.map((lead) => (lead.id === data.id ? data : lead)),
+        );
+        setMessage("Lead updated.");
       } else {
         const { data, error: insertError } = await supabase
-          .from('leads')
+          .from("leads")
           .insert({ ...payload, org_id: organization.id, created_by: user.id })
-          .select('*')
+          .select("*")
           .single();
         if (insertError) throw insertError;
         setLeads((current) => [data, ...current]);
-        setMessage('Lead created.');
+        setMessage("Lead created.");
       }
       resetForm();
-      setIntakeMode('none');
+      setIntakeMode("none");
     } catch (submitError) {
-      setError(errorMessage(submitError, 'Could not save lead.'));
+      setError(errorMessage(submitError, "Could not save lead."));
     } finally {
       setSaving(false);
     }
   }
 
   function openImport() {
-    setIntakeMode('import');
-    setMessage('');
-    setError('');
+    setIntakeMode("import");
+    setImportBrandSelectionId(isAgency ? selectedBrandId : SELF_BRAND_ID);
+    setMessage("");
+    setError("");
   }
 
   function openSync() {
-    setIntakeMode('sync');
-    setMessage('');
-    setError('');
+    setIntakeMode("sync");
+    setImportBrandSelectionId(isAgency ? selectedBrandId : SELF_BRAND_ID);
+    if (!selectedSourceId && connectedLeadSources.length > 0) {
+      setSelectedSourceId(connectedLeadSources[0].id);
+    }
+    setMessage("");
+    setError("");
   }
 
-  async function patchLead(lead: LeadRow, patch: Database['public']['Tables']['leads']['Update']) {
+  async function patchLead(
+    lead: LeadRow,
+    patch: Database["public"]["Tables"]["leads"]["Update"],
+  ) {
     if (!supabase || !organization?.id || !canWrite) return;
     setUpdatingId(lead.id);
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
     try {
       const { data, error: updateError } = await supabase
-        .from('leads')
+        .from("leads")
         .update(patch)
-        .eq('id', lead.id)
-        .eq('org_id', organization.id)
-        .select('*')
+        .eq("id", lead.id)
+        .eq("org_id", organization.id)
+        .select("*")
         .single();
       if (updateError) throw updateError;
-      setLeads((current) => current.map((item) => (item.id === data.id ? data : item)));
-      setMessage('Lead updated.');
+      setLeads((current) =>
+        current.map((item) => (item.id === data.id ? data : item)),
+      );
+      setMessage("Lead updated.");
     } catch (patchError) {
-      setError(errorMessage(patchError, 'Could not update lead.'));
+      setError(errorMessage(patchError, "Could not update lead."));
     } finally {
-      setUpdatingId('');
+      setUpdatingId("");
     }
   }
 
   async function handleImportFile(file: File | null) {
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
     setImportPreview([]);
-    setImportFileName('');
+    setImportFileName("");
     setImportSkipped(0);
 
     if (!file) return;
@@ -402,9 +653,22 @@ export function LeadsPage() {
       setImportPreview(parsed.rows);
       setImportFileName(file.name);
       setImportSkipped(parsed.skipped);
-      setMessage(`${parsed.rows.length} lead${parsed.rows.length === 1 ? '' : 's'} ready to import from ${file.name}.`);
+      if (parsed.rows.length === 0) {
+        setError(
+          `No lead rows found in ${file.name}. Ensure the file contains header columns and data rows.`,
+        );
+      } else {
+        setMessage(
+          `${parsed.rows.length} lead${parsed.rows.length === 1 ? "" : "s"} ready to import from ${file.name}.${parsed.skipped > 0 ? ` (${parsed.skipped} empty row${parsed.skipped === 1 ? "" : "s"} skipped)` : ""}`,
+        );
+      }
     } catch (parseError) {
-      setError(errorMessage(parseError, 'Could not read this lead sheet. Use .xlsx, .csv, or .tsv.'));
+      setError(
+        errorMessage(
+          parseError,
+          "Could not read this lead sheet. Use .xlsx, .csv, or .tsv.",
+        ),
+      );
     } finally {
       setImporting(false);
     }
@@ -412,31 +676,33 @@ export function LeadsPage() {
 
   async function saveImportPreview() {
     if (!importFileName || importPreview.length === 0) {
-      setError('Upload a lead sheet before importing.');
+      setError("Upload a lead sheet before importing.");
       return;
     }
     await saveParsedLeads(importPreview, {
       externalSourceKey: `file:${importFileName}`,
-      successMessage: `${importPreview.length} lead${importPreview.length === 1 ? '' : 's'} imported from sheet.`,
-      metadata: { importFile: importFileName, importMode: 'file' },
+      successMessage: `${importPreview.length} lead${importPreview.length === 1 ? "" : "s"} imported from sheet.`,
+      metadata: { importFile: importFileName, importMode: "file" },
     });
     setImportPreview([]);
-    setImportFileName('');
+    setImportFileName("");
     setImportSkipped(0);
   }
 
   async function syncConnectedSource() {
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
 
-    const source = analyticsSources.find((item) => item.id === selectedSourceId);
+    const source = analyticsSources.find(
+      (item) => item.id === selectedSourceId,
+    );
     if (!source) {
-      setError('Choose a connected marketing source first.');
+      setError("Choose a connected marketing source first.");
       return;
     }
 
     if (!supabase || !organization?.id) {
-      setError('Connect Supabase to sync live leads.');
+      setError("Connect Supabase to sync live leads.");
       return;
     }
 
@@ -444,59 +710,122 @@ export function LeadsPage() {
     try {
       let parsed: ReturnType<typeof parseSourceLeads>;
 
-      if (source.source_key === 'meta_ads' || source.source_key === 'facebook' || source.source_key === 'instagram') {
-        const { data: edgeData, error: edgeError } = await supabase.functions.invoke('social-sync-leads', {
-          body: { orgId: organization.id, provider: source.source_key },
-        });
+      if (
+        source.source_key === "meta_ads" ||
+        source.source_key === "facebook" ||
+        source.source_key === "instagram"
+      ) {
+        const effectiveFormId =
+          selectedFormId === "custom"
+            ? customFormId.trim()
+            : selectedFormId !== "all"
+              ? selectedFormId
+              : undefined;
+
+        const { data: edgeData, error: edgeError } =
+          await supabase.functions.invoke("social-sync-leads", {
+            body: {
+              orgId: organization.id,
+              provider: source.source_key,
+              formId: effectiveFormId,
+            },
+          });
 
         if (edgeError) {
-          throw new Error(await edgeFunctionErrorMessage(edgeError, 'social-sync-leads'));
+          throw new Error(
+            await edgeFunctionErrorMessage(edgeError, "social-sync-leads"),
+          );
         }
 
         const rawLeads = edgeData?.leads;
         if (!Array.isArray(rawLeads) || rawLeads.length === 0) {
-          const emptyMsg = edgeData?.message || `${source.display_name} has no lead form submissions found on connected Facebook pages.`;
+          const emptyMsg =
+            edgeData?.message ||
+            `${source.display_name} has no lead form submissions found on connected Facebook pages.`;
           setError(emptyMsg);
           return;
         }
 
-        parsed = parseSourceLeads({ leads: rawLeads } as unknown as Json, sourceKeyToLeadSource(source.source_key), source.source_key);
+        parsed = parseSourceLeads(
+          { leads: rawLeads } as unknown as Json,
+          sourceKeyToLeadSource(source.source_key),
+          source.source_key,
+        );
       } else {
-        parsed = parseSourceLeads(source.metadata, sourceKeyToLeadSource(source.source_key), source.source_key);
+        parsed = parseSourceLeads(
+          source.metadata,
+          sourceKeyToLeadSource(source.source_key),
+          source.source_key,
+        );
       }
 
       if (parsed.rows.length === 0) {
-        setError(`${source.display_name} is connected in Settings / Connections, but it has no lead-form rows available yet. Import the platform export sheet here until that provider starts sending lead payloads into this source.`);
+        setError(
+          `${source.display_name} is connected in Settings / Connections, but it has no lead-form rows available yet. Import the platform export sheet here until that provider starts sending lead payloads into this source.`,
+        );
         return;
       }
 
+      const effectiveFormId =
+        selectedFormId === "custom"
+          ? customFormId.trim()
+          : selectedFormId !== "all"
+            ? selectedFormId
+            : undefined;
+      const matchedForm = leadForms.find((f) => f.id === effectiveFormId);
+      const targetLabel = matchedForm
+        ? `form "${matchedForm.name}"`
+        : effectiveFormId
+          ? `form ID ${effectiveFormId}`
+          : source.display_name;
+
       await saveParsedLeads(parsed.rows, {
         externalSourceKey: source.source_key,
-        successMessage: `${parsed.rows.length} lead${parsed.rows.length === 1 ? '' : 's'} synced from ${source.display_name}.`,
-        metadata: { importMode: 'source_sync', analyticsSourceId: source.id, sourceKey: source.source_key },
+        successMessage: `${parsed.rows.length} lead${parsed.rows.length === 1 ? "" : "s"} synced from ${targetLabel}.`,
+        metadata: {
+          importMode: "source_sync",
+          analyticsSourceId: source.id,
+          sourceKey: source.source_key,
+          ...(effectiveFormId ? { formId: effectiveFormId } : {}),
+        },
       });
     } catch (syncError) {
-      setError(errorMessage(syncError, 'Could not sync leads from this source.'));
+      setError(
+        errorMessage(syncError, "Could not sync leads from this source."),
+      );
     } finally {
       setSyncing(false);
     }
   }
 
-  async function saveParsedLeads(rows: ParsedLead[], options: { externalSourceKey: string; successMessage: string; metadata: Record<string, Json> }) {
+  async function saveParsedLeads(
+    rows: ParsedLead[],
+    options: {
+      externalSourceKey: string;
+      successMessage: string;
+      metadata: Record<string, Json>;
+    },
+  ) {
     if (!supabase || !organization?.id || !user?.id) return;
     if (!canWrite) {
-      setError('Ask an owner, admin, or editor to import leads.');
+      setError("Ask an owner, admin, or editor to import leads.");
       return;
     }
 
     setImporting(true);
-    setMessage('');
-    setError('');
+    setMessage("");
+    setError("");
 
     const payload = rows.map((row) => ({
       org_id: organization.id,
-      client_business_dna_id: isAgency && importBrandSelectionId !== SELF_BRAND_ID ? importBrandSelectionId : null,
-      campaign_id: importCampaignId || campaignIdFromName(row.campaignName, importCampaignOptions) || null,
+      client_business_dna_id:
+        isAgency && importBrandSelectionId !== SELF_BRAND_ID
+          ? importBrandSelectionId
+          : null,
+      campaign_id:
+        importCampaignId ||
+        campaignIdFromName(row.campaignName, importCampaignOptions) ||
+        null,
       full_name: row.fullName,
       company: row.company || null,
       email: row.email || null,
@@ -516,15 +845,17 @@ export function LeadsPage() {
 
     try {
       const { data, error: upsertError } = await supabase
-        .from('leads')
-        .upsert(payload, { onConflict: 'org_id,external_source_key,external_lead_id' })
-        .select('*');
+        .from("leads")
+        .upsert(payload, {
+          onConflict: "org_id,external_source_key,external_lead_id",
+        })
+        .select("*");
       if (upsertError) throw upsertError;
       const nextRows = data ?? [];
       setLeads((current) => mergeLeads(current, nextRows));
       setMessage(options.successMessage);
     } catch (saveError) {
-      setError(errorMessage(saveError, 'Could not save imported leads.'));
+      setError(errorMessage(saveError, "Could not save imported leads."));
     } finally {
       setImporting(false);
     }
@@ -538,18 +869,35 @@ export function LeadsPage() {
           <h2>Leads CRM</h2>
         </div>
         <div className="page-header-actions">
-          <span className={readOnly ? 'status-pill warning' : 'status-pill success'}>
-            {readOnly ? 'Read only' : `${leads.length} leads`}
+          <span
+            className={readOnly ? "status-pill warning" : "status-pill success"}
+          >
+            {readOnly ? "Read only" : `${brandLeads.length} leads`}
           </span>
-          <button type="button" className="icon-text-button" onClick={startCreate} disabled={!canWrite}>
+          <button
+            type="button"
+            className="icon-text-button"
+            onClick={startCreate}
+            disabled={!canWrite}
+          >
             <Target size={16} />
             <span>New lead</span>
           </button>
-          <button type="button" className="icon-text-button" onClick={openImport} disabled={!canWrite}>
+          <button
+            type="button"
+            className="icon-text-button"
+            onClick={openImport}
+            disabled={!canWrite}
+          >
             <Upload size={16} />
             <span>Import sheet</span>
           </button>
-          <button type="button" className="icon-text-button" onClick={openSync} disabled={!canWrite}>
+          <button
+            type="button"
+            className="icon-text-button"
+            onClick={openSync}
+            disabled={!canWrite}
+          >
             <RefreshCw size={16} />
             <span>Sync source</span>
           </button>
@@ -586,239 +934,547 @@ export function LeadsPage() {
             </article>
           </section>
 
-          {intakeMode === 'manual' ? (
-          <section className="draft-panel lead-action-panel" aria-label="Create or edit lead">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Lead</p>
-                <h3>{editingId ? 'Edit lead' : 'New lead'}</h3>
+          {intakeMode === "manual" ? (
+            <section
+              className="draft-panel lead-action-panel"
+              aria-label="Create or edit lead"
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Lead</p>
+                  <h3>{editingId ? "Edit lead" : "New lead"}</h3>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => {
+                    resetForm();
+                    setIntakeMode("none");
+                  }}
+                  aria-label="Close lead form"
+                >
+                  <X size={16} />
+                </button>
               </div>
-              <button type="button" className="icon-button" onClick={() => { resetForm(); setIntakeMode('none'); }} aria-label="Close lead form">
-                <X size={16} />
-              </button>
-            </div>
 
-            {readOnly ? <p className="form-message warning">Ask an owner, admin, or editor to create and manage leads.</p> : null}
+              {readOnly ? (
+                <p className="form-message warning">
+                  Ask an owner, admin, or editor to create and manage leads.
+                </p>
+              ) : null}
 
-            <form className="draft-form creator-form" onSubmit={handleSubmit}>
+              <form className="draft-form creator-form" onSubmit={handleSubmit}>
+                {isAgency ? (
+                  <BrandDnaSelect
+                    label="Lead for"
+                    selfLabel={organization?.name ?? "Agency brand"}
+                    clients={clients}
+                    value={form.brandSelectionId}
+                    onChange={(id) => updateForm("brandSelectionId", id)}
+                  />
+                ) : null}
+
+                <CampaignSelect
+                  campaigns={campaignOptions}
+                  value={form.campaignId}
+                  onChange={(id) => updateForm("campaignId", id)}
+                />
+
+                <label>
+                  <span>Name</span>
+                  <input
+                    value={form.fullName}
+                    onChange={(event) =>
+                      updateForm("fullName", event.target.value)
+                    }
+                    placeholder="Lead name"
+                  />
+                </label>
+                <label>
+                  <span>Company</span>
+                  <input
+                    value={form.company}
+                    onChange={(event) =>
+                      updateForm("company", event.target.value)
+                    }
+                    placeholder="Company or brand"
+                  />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={form.email}
+                    onChange={(event) =>
+                      updateForm("email", event.target.value)
+                    }
+                    placeholder="name@example.com"
+                  />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input
+                    value={form.phone}
+                    onChange={(event) =>
+                      updateForm("phone", event.target.value)
+                    }
+                    placeholder="+91..."
+                  />
+                </label>
+                <label>
+                  <span>Source</span>
+                  <select
+                    value={form.source}
+                    onChange={(event) =>
+                      updateForm("source", event.target.value as LeadSource)
+                    }
+                  >
+                    {sourceOptions.map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Status</span>
+                  <select
+                    value={form.status}
+                    onChange={(event) =>
+                      updateForm("status", event.target.value as LeadStatus)
+                    }
+                  >
+                    {statusOptions.map((status) => (
+                      <option key={status.value} value={status.value}>
+                        {status.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Lead type</span>
+                  <select
+                    value={form.leadType}
+                    onChange={(event) => {
+                      const leadType = event.target.value as LeadType;
+                      updateForm("leadType", leadType);
+                      updateForm(
+                        "leadScore",
+                        leadTypeOptions.find((item) => item.value === leadType)
+                          ?.score ?? form.leadScore,
+                      );
+                    }}
+                  >
+                    {leadTypeOptions.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Score</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={form.leadScore}
+                    onChange={(event) =>
+                      updateForm("leadScore", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Value</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.estimatedValue}
+                    onChange={(event) =>
+                      updateForm("estimatedValue", event.target.value)
+                    }
+                    placeholder="Estimated value"
+                  />
+                </label>
+                <label>
+                  <span>Next follow-up</span>
+                  <input
+                    type="date"
+                    value={form.nextFollowUpAt}
+                    onChange={(event) =>
+                      updateForm("nextFollowUpAt", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="draft-body-field">
+                  <span>Notes</span>
+                  <textarea
+                    value={form.notes}
+                    onChange={(event) =>
+                      updateForm("notes", event.target.value)
+                    }
+                    rows={3}
+                    placeholder="Need, budget, next step, objection, or outcome"
+                  />
+                </label>
+
+                <div className="creator-actions draft-body-field">
+                  {editingId ? (
+                    <button
+                      type="button"
+                      className="icon-text-button"
+                      onClick={() => {
+                        resetForm();
+                        setIntakeMode("none");
+                      }}
+                    >
+                      <X size={16} />
+                      <span>Cancel</span>
+                    </button>
+                  ) : null}
+                  <button
+                    className="primary-action"
+                    type="submit"
+                    disabled={saving || !canWrite}
+                  >
+                    {saving ? (
+                      <Loader2 className="spin" size={18} />
+                    ) : (
+                      <Save size={18} />
+                    )}
+                    <span>
+                      {saving
+                        ? "Saving"
+                        : editingId
+                          ? "Save changes"
+                          : "Create lead"}
+                    </span>
+                  </button>
+                </div>
+              </form>
+
+              {message ? (
+                <p className="form-message success">{message}</p>
+              ) : null}
+              {error ? <p className="form-message error">{error}</p> : null}
+            </section>
+          ) : null}
+
+          {intakeMode === "import" ? (
+            <section
+              className="draft-panel lead-action-panel lead-import-panel"
+              aria-label="Import leads"
+            >
+              <div className="section-heading">
+                <div>
+                  <p className="eyebrow">Import</p>
+                  <h3>Lead sheet</h3>
+                </div>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setIntakeMode("none")}
+                  aria-label="Close import panel"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
               {isAgency ? (
                 <BrandDnaSelect
-                  label="Lead for"
-                  selfLabel={organization?.name ?? 'Agency brand'}
+                  label="Import for"
+                  selfLabel={organization?.name ?? "Agency brand"}
                   clients={clients}
-                  value={form.brandSelectionId}
-                  onChange={(id) => updateForm('brandSelectionId', id)}
+                  value={importBrandSelectionId}
+                  onChange={setImportBrandSelectionId}
                 />
               ) : null}
 
-              <CampaignSelect campaigns={campaignOptions} value={form.campaignId} onChange={(id) => updateForm('campaignId', id)} />
+              <div className="lead-import-grid">
+                <label>
+                  <span>Campaign</span>
+                  <select
+                    value={importCampaignId}
+                    onChange={(event) =>
+                      setImportCampaignId(event.target.value)
+                    }
+                  >
+                    <option value="">Match from sheet or leave blank</option>
+                    {importCampaignOptions.map((campaign) => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Default source</span>
+                  <select
+                    value={importSource}
+                    onChange={(event) =>
+                      setImportSource(event.target.value as LeadSource)
+                    }
+                  >
+                    {sourceOptions.map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
 
-              <label>
-                <span>Name</span>
-                <input value={form.fullName} onChange={(event) => updateForm('fullName', event.target.value)} placeholder="Lead name" />
+              <label className="lead-file-drop">
+                <Upload size={18} />
+                <span>
+                  {importFileName || "Upload .xlsx, .csv, or .tsv lead sheet"}
+                </span>
+                <input
+                  type="file"
+                  accept=".xlsx,.csv,.tsv,text/csv,text/tab-separated-values"
+                  onChange={(event) =>
+                    handleImportFile(event.target.files?.[0] ?? null)
+                  }
+                  disabled={!canWrite || importing}
+                />
               </label>
-              <label>
-                <span>Company</span>
-                <input value={form.company} onChange={(event) => updateForm('company', event.target.value)} placeholder="Company or brand" />
-              </label>
-              <label>
-                <span>Email</span>
-                <input type="email" value={form.email} onChange={(event) => updateForm('email', event.target.value)} placeholder="name@example.com" />
-              </label>
-              <label>
-                <span>Phone</span>
-                <input value={form.phone} onChange={(event) => updateForm('phone', event.target.value)} placeholder="+91..." />
-              </label>
-              <label>
-                <span>Source</span>
-                <select value={form.source} onChange={(event) => updateForm('source', event.target.value as LeadSource)}>
-                  {sourceOptions.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Status</span>
-                <select value={form.status} onChange={(event) => updateForm('status', event.target.value as LeadStatus)}>
-                  {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Lead type</span>
-                <select
-                  value={form.leadType}
-                  onChange={(event) => {
-                    const leadType = event.target.value as LeadType;
-                    updateForm('leadType', leadType);
-                    updateForm('leadScore', leadTypeOptions.find((item) => item.value === leadType)?.score ?? form.leadScore);
-                  }}
-                >
-                  {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Score</span>
-                <input type="number" min={0} max={100} value={form.leadScore} onChange={(event) => updateForm('leadScore', event.target.value)} />
-              </label>
-              <label>
-                <span>Value</span>
-                <input type="number" min={0} step="0.01" value={form.estimatedValue} onChange={(event) => updateForm('estimatedValue', event.target.value)} placeholder="Estimated value" />
-              </label>
-              <label>
-                <span>Next follow-up</span>
-                <input type="date" value={form.nextFollowUpAt} onChange={(event) => updateForm('nextFollowUpAt', event.target.value)} />
-              </label>
-              <label className="draft-body-field">
-                <span>Notes</span>
-                <textarea value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} rows={3} placeholder="Need, budget, next step, objection, or outcome" />
-              </label>
+
+              {importPreview.length > 0 ? (
+                <div className="lead-import-preview">
+                  <div>
+                    <strong>{importPreview.length} ready</strong>
+                    <small>
+                      {importSkipped > 0
+                        ? `${importSkipped} skipped`
+                        : "No skipped rows"}
+                    </small>
+                  </div>
+                  <ul>
+                    {importPreview.slice(0, 4).map((lead, index) => (
+                      <li key={`${lead.fullName}-${index}`}>
+                        <span>{lead.fullName}</span>
+                        <small>
+                          {[lead.email, lead.phone, sourceLabel(lead.source)]
+                            .filter(Boolean)
+                            .join(" - ")}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div className="creator-actions draft-body-field">
-                {editingId ? (
-                  <button type="button" className="icon-text-button" onClick={() => { resetForm(); setIntakeMode('none'); }}>
-                    <X size={16} />
-                    <span>Cancel</span>
-                  </button>
-                ) : null}
-                <button className="primary-action" type="submit" disabled={saving || !canWrite}>
-                  {saving ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-                  <span>{saving ? 'Saving' : editingId ? 'Save changes' : 'Create lead'}</span>
+                <button
+                  type="button"
+                  className="primary-action"
+                  onClick={saveImportPreview}
+                  disabled={
+                    !canWrite || importing || importPreview.length === 0
+                  }
+                >
+                  {importing ? (
+                    <Loader2 className="spin" size={18} />
+                  ) : (
+                    <Save size={18} />
+                  )}
+                  <span>
+                    {importing
+                      ? "Importing"
+                      : importPreview.length > 0
+                        ? `Import ${importPreview.length} lead${importPreview.length === 1 ? "" : "s"}`
+                        : "Import leads"}
+                  </span>
                 </button>
               </div>
-            </form>
 
-            {message ? <p className="form-message success">{message}</p> : null}
-            {error ? <p className="form-message error">{error}</p> : null}
-          </section>
+              {message ? (
+                <p className="form-message success">{message}</p>
+              ) : null}
+              {error ? <p className="form-message error">{error}</p> : null}
+            </section>
           ) : null}
 
-          {intakeMode === 'import' ? (
-          <section className="draft-panel lead-action-panel lead-import-panel" aria-label="Import leads">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">Import</p>
-                <h3>Lead sheet</h3>
-              </div>
-              <button type="button" className="icon-button" onClick={() => setIntakeMode('none')} aria-label="Close import panel">
-                <X size={16} />
-              </button>
-            </div>
-
-            {isAgency ? (
-              <BrandDnaSelect
-                label="Import for"
-                selfLabel={organization?.name ?? 'Agency brand'}
-                clients={clients}
-                value={importBrandSelectionId}
-                onChange={setImportBrandSelectionId}
-              />
-            ) : null}
-
-            <div className="lead-import-grid">
-              <label>
-                <span>Campaign</span>
-                <select value={importCampaignId} onChange={(event) => setImportCampaignId(event.target.value)}>
-                  <option value="">Match from sheet or leave blank</option>
-                  {importCampaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Default source</span>
-                <select value={importSource} onChange={(event) => setImportSource(event.target.value as LeadSource)}>
-                  {sourceOptions.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
-                </select>
-              </label>
-            </div>
-
-            <label className="lead-file-drop">
-              <Upload size={18} />
-              <span>{importFileName || 'Upload .xlsx, .csv, or .tsv lead sheet'}</span>
-              <input type="file" accept=".xlsx,.csv,.tsv,text/csv,text/tab-separated-values" onChange={(event) => handleImportFile(event.target.files?.[0] ?? null)} disabled={!canWrite || importing} />
-            </label>
-
-            {importPreview.length > 0 ? (
-              <div className="lead-import-preview">
+          {intakeMode === "sync" ? (
+            <section
+              className="draft-panel lead-action-panel lead-import-panel"
+              aria-label="Sync connected lead source"
+            >
+              <div className="section-heading">
                 <div>
-                  <strong>{importPreview.length} ready</strong>
-                  <small>{importSkipped > 0 ? `${importSkipped} skipped` : 'No skipped rows'}</small>
+                  <p className="eyebrow">From Connections</p>
+                  <h3>Marketing source</h3>
                 </div>
-                <ul>
-                  {importPreview.slice(0, 4).map((lead, index) => (
-                    <li key={`${lead.fullName}-${index}`}>
-                      <span>{lead.fullName}</span>
-                      <small>{[lead.email, lead.phone, sourceLabel(lead.source)].filter(Boolean).join(' - ')}</small>
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" className="primary-action" onClick={saveImportPreview} disabled={!canWrite || importing}>
-                  {importing ? <Loader2 className="spin" size={18} /> : <Save size={18} />}
-                  <span>{importing ? 'Importing' : 'Import leads'}</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  onClick={() => setIntakeMode("none")}
+                  aria-label="Close source sync panel"
+                >
+                  <X size={16} />
                 </button>
               </div>
-            ) : null}
 
-          </section>
-          ) : null}
+              {isAgency ? (
+                <BrandDnaSelect
+                  label="Sync for"
+                  selfLabel={organization?.name ?? "Agency brand"}
+                  clients={clients}
+                  value={importBrandSelectionId}
+                  onChange={setImportBrandSelectionId}
+                />
+              ) : null}
 
-          {intakeMode === 'sync' ? (
-          <section className="draft-panel lead-action-panel lead-import-panel" aria-label="Sync connected lead source">
-            <div className="section-heading">
-              <div>
-                <p className="eyebrow">From Connections</p>
-                <h3>Marketing source</h3>
+              <div className="lead-import-grid">
+                <label>
+                  <span>Campaign</span>
+                  <select
+                    value={importCampaignId}
+                    onChange={(event) =>
+                      setImportCampaignId(event.target.value)
+                    }
+                  >
+                    <option value="">No campaign selected</option>
+                    {importCampaignOptions.map((campaign) => (
+                      <option key={campaign.id} value={campaign.id}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span>Marketing source</span>
+                  <select
+                    value={selectedSourceId}
+                    onChange={(event) =>
+                      setSelectedSourceId(event.target.value)
+                    }
+                  >
+                    <option value="">Choose source</option>
+                    {analyticsSources.map((source) => (
+                      <option key={source.id} value={source.id}>
+                        {source.display_name ||
+                          reportingSourceName(source.source_key)}{" "}
+                        - {sourceStatusLabel(source.status)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {(() => {
+                  const selectedSrc = analyticsSources.find(
+                    (s) => s.id === selectedSourceId,
+                  );
+                  const isMetaSource =
+                    selectedSrc &&
+                    ["meta_ads", "facebook", "instagram"].includes(
+                      selectedSrc.source_key,
+                    );
+                  if (!isMetaSource) return null;
+                  return (
+                    <>
+                      <label>
+                        <span>
+                          Lead form{" "}
+                          {loadingForms ? "(discovering forms...)" : ""}
+                        </span>
+                        <select
+                          value={selectedFormId}
+                          onChange={(event) =>
+                            setSelectedFormId(event.target.value)
+                          }
+                          disabled={loadingForms}
+                        >
+                          <option value="all">
+                            {leadForms.length > 0
+                              ? `All Lead Forms (${leadForms.length} available)`
+                              : "All Lead Forms"}
+                          </option>
+                          {leadForms.map((lf) => (
+                            <option key={lf.id} value={lf.id}>
+                              {lf.name} ({lf.pageName} - {lf.leadsCount} lead
+                              {lf.leadsCount === 1 ? "" : "s"})
+                            </option>
+                          ))}
+                          <option value="custom">
+                            Enter custom Form ID manually...
+                          </option>
+                        </select>
+                      </label>
+                      {selectedFormId === "custom" ? (
+                        <label>
+                          <span>Custom Meta Lead Form ID</span>
+                          <input
+                            type="text"
+                            placeholder="e.g. 109283746592817"
+                            value={customFormId}
+                            onChange={(e) => setCustomFormId(e.target.value)}
+                          />
+                        </label>
+                      ) : null}
+                      {formDiscoveryInfo && formDiscoveryInfo.pagesChecked.length > 0 ? (
+                        <p className="field-hint" style={{ fontSize: "0.82rem", opacity: 0.8, marginTop: "0.25rem" }}>
+                          Connected pages checked: {formDiscoveryInfo.pagesChecked.map((p) => p.name).join(", ")}
+                        </p>
+                      ) : null}
+                    </>
+                  );
+                })()}
               </div>
-              <button type="button" className="icon-button" onClick={() => setIntakeMode('none')} aria-label="Close source sync panel">
-                <X size={16} />
+              <button
+                type="button"
+                className="primary-action"
+                onClick={syncConnectedSource}
+                disabled={
+                  !canWrite || syncing || connectedLeadSources.length === 0
+                }
+              >
+                {syncing ? (
+                  <Loader2 className="spin" size={18} />
+                ) : (
+                  <RefreshCw size={18} />
+                )}
+                <span>{syncing ? "Syncing" : "Sync leads"}</span>
               </button>
-            </div>
-
-            {isAgency ? (
-              <BrandDnaSelect
-                label="Sync for"
-                selfLabel={organization?.name ?? 'Agency brand'}
-                clients={clients}
-                value={importBrandSelectionId}
-                onChange={setImportBrandSelectionId}
-              />
-            ) : null}
-
-            <div className="lead-import-grid">
-              <label>
-                <span>Campaign</span>
-                <select value={importCampaignId} onChange={(event) => setImportCampaignId(event.target.value)}>
-                  <option value="">No campaign selected</option>
-                  {importCampaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Marketing source</span>
-                <select value={selectedSourceId} onChange={(event) => setSelectedSourceId(event.target.value)}>
-                  <option value="">Choose source</option>
-                  {analyticsSources.map((source) => (
-                    <option key={source.id} value={source.id}>
-                      {source.display_name || reportingSourceName(source.source_key)} - {sourceStatusLabel(source.status)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <button type="button" className="primary-action" onClick={syncConnectedSource} disabled={!canWrite || syncing || connectedLeadSources.length === 0}>
-              {syncing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />}
-              <span>{syncing ? 'Syncing' : 'Sync leads'}</span>
-            </button>
-            {connectedLeadSources.length === 0 ? <p className="form-message warning">Connect marketing data sources in Settings / Connections first.</p> : null}
-            {message ? <p className="form-message success">{message}</p> : null}
-            {error ? <p className="form-message error">{error}</p> : null}
-          </section>
+              {connectedLeadSources.length === 0 ? (
+                <p className="form-message warning">
+                  Connect marketing data sources in Settings / Connections
+                  first.
+                </p>
+              ) : null}
+              {message ? (
+                <p className="form-message success">{message}</p>
+              ) : null}
+              {error ? <p className="form-message error">{error}</p> : null}
+            </section>
           ) : null}
 
-          <section className="draft-panel leads-pipeline-panel" aria-label="Lead list">
+          <section
+            className="draft-panel leads-pipeline-panel"
+            aria-label="Lead list"
+          >
             <div className="section-heading content-library-heading">
               <div>
                 <p className="eyebrow">Pipeline</p>
                 <h3>Lead outcomes</h3>
               </div>
+              {isAgency ? (
+                <BrandDnaSelect
+                  label="Brand"
+                  selfLabel={organization?.name ?? "Agency brand"}
+                  clients={clients}
+                  value={selectedBrandId}
+                  onChange={setSelectedBrandId}
+                />
+              ) : null}
               <div className="library-filter-tabs" aria-label="Filter leads">
                 {filters.map((item) => (
-                  <button key={item.value} type="button" className={filter === item.value ? 'is-active' : ''} onClick={() => setFilter(item.value)}>
+                  <button
+                    key={item.value}
+                    type="button"
+                    className={filter === item.value ? "is-active" : ""}
+                    onClick={() => setFilter(item.value)}
+                  >
                     <span>{item.label}</span>
                     <small>{counts.get(item.value) ?? 0}</small>
                   </button>
@@ -827,85 +1483,218 @@ export function LeadsPage() {
               <div className="lead-filter-row">
                 <label>
                   <span>Type</span>
-                  <select value={leadTypeFilter} onChange={(event) => setLeadTypeFilter(event.target.value as LeadTypeFilter)}>
+                  <select
+                    value={leadTypeFilter}
+                    onChange={(event) =>
+                      setLeadTypeFilter(event.target.value as LeadTypeFilter)
+                    }
+                  >
                     <option value="all">All types</option>
-                    {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+                    {leadTypeOptions.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label>
                   <span>Source</span>
-                  <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as LeadSourceFilter)}>
+                  <select
+                    value={sourceFilter}
+                    onChange={(event) =>
+                      setSourceFilter(event.target.value as LeadSourceFilter)
+                    }
+                  >
                     <option value="all">All sources</option>
-                    {sourceOptions.map((source) => <option key={source.value} value={source.value}>{source.label}</option>)}
+                    {sourceOptions.map((source) => (
+                      <option key={source.value} value={source.value}>
+                        {source.label}
+                      </option>
+                    ))}
                   </select>
                 </label>
+                {availableLeadForms.length > 0 ? (
+                  <label>
+                    <span>Lead form</span>
+                    <select
+                      value={leadFormFilter}
+                      onChange={(event) =>
+                        setLeadFormFilter(event.target.value)
+                      }
+                    >
+                      <option value="all">
+                        All forms ({availableLeadForms.length})
+                      </option>
+                      {availableLeadForms.map((form) => (
+                        <option key={form.id} value={form.id}>
+                          {form.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
               </div>
             </div>
 
             <div className="saved-content-list">
-              {visibleLeads.length > 0 ? visibleLeads.map((lead) => {
-                const forward = nextStatus[lead.status];
-                const archived = lead.status === 'archived';
-                return (
-                  <article className={`saved-content-row lead-row ${archived ? 'is-archived' : ''}`} key={lead.id}>
-                    <div className="saved-content-row__main">
-                      <strong>{lead.full_name}</strong>
-                      <p>{[lead.company, lead.email, lead.phone].filter(Boolean).join(' - ') || 'No contact details saved yet.'}</p>
-                      <div className="saved-content-row__meta">
-                        <span>{statusLabel(lead.status)}</span>
-                        <span className={`lead-type-pill ${lead.lead_type}`}>{leadTypeLabel(lead.lead_type)}</span>
-                        <span>{sourceLabel(lead.source)}</span>
-                        {isAgency ? <span>{lead.client_business_dna_id ? clientNameById.get(lead.client_business_dna_id) ?? 'Client brand' : organization?.name ?? 'Agency brand'}</span> : null}
-                        {lead.campaign_id ? <span>{campaignNameById.get(lead.campaign_id) ?? 'Campaign'}</span> : null}
-                        <span>Score {lead.lead_score}</span>
-                        {lead.estimated_value !== null ? <span>{formatMoney(lead.estimated_value)}</span> : null}
-                        {lead.next_follow_up_at ? <span>Follow-up {formatDate(lead.next_follow_up_at)}</span> : null}
-                      </div>
-                      {lead.notes ? <p className="lead-notes">{lead.notes}</p> : null}
-                    </div>
-
-                    <div className="saved-content-row__side">
-                      <small>Updated {formatDate(lead.updated_at)}</small>
-                      {canWrite ? (
-                        <div className="saved-content-row__actions">
-                          {forward ? (
-                            <button type="button" className="icon-text-button" disabled={updatingId === lead.id} onClick={() => patchLead(lead, { status: forward })}>
-                              {updatingId === lead.id ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
-                              <span>{statusLabel(forward)}</span>
-                            </button>
+              {visibleLeads.length > 0 ? (
+                visibleLeads.map((lead) => {
+                  const forward = nextStatus[lead.status];
+                  const archived = lead.status === "archived";
+                  const formInfo = getLeadFormInfo(lead);
+                  return (
+                    <article
+                      className={`saved-content-row lead-row ${archived ? "is-archived" : ""}`}
+                      key={lead.id}
+                    >
+                      <div className="saved-content-row__main">
+                        <strong>{lead.full_name}</strong>
+                        <p>
+                          {[lead.company, lead.email, lead.phone]
+                            .filter(Boolean)
+                            .join(" - ") || "No contact details saved yet."}
+                        </p>
+                        <div className="saved-content-row__meta">
+                          <span>{statusLabel(lead.status)}</span>
+                          <span className={`lead-type-pill ${lead.lead_type}`}>
+                            {leadTypeLabel(lead.lead_type)}
+                          </span>
+                          <span>{sourceLabel(lead.source)}</span>
+                          {formInfo.formName || formInfo.formId ? (
+                            <span
+                              className="lead-form-pill"
+                              title={`Form ID: ${formInfo.formId || "N/A"}${formInfo.pageName ? ` | Page: ${formInfo.pageName}` : ""}${formInfo.adName ? ` | Ad: ${formInfo.adName}` : ""}`}
+                            >
+                              Form: {formInfo.formName || formInfo.formId}
+                            </span>
                           ) : null}
-                          <label className="task-status-select">
-                            <select value={lead.status} disabled={updatingId === lead.id} onChange={(event) => patchLead(lead, { status: event.target.value as LeadStatus })}>
-                              {statusOptions.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-                            </select>
-                          </label>
-                          <label className="task-status-select">
-                            <select value={lead.lead_type} disabled={updatingId === lead.id} onChange={(event) => patchLead(lead, { lead_type: event.target.value as LeadType })}>
-                              {leadTypeOptions.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-                            </select>
-                          </label>
-                          <button type="button" className="icon-text-button" onClick={() => startEdit(lead)}>
-                            <Pencil size={16} />
-                            <span>Edit</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="icon-text-button"
-                            disabled={updatingId === lead.id}
-                            onClick={() => patchLead(lead, { status: archived ? 'new' : 'archived' })}
-                          >
-                            {archived ? <RotateCcw size={16} /> : <Archive size={16} />}
-                            <span>{archived ? 'Restore' : 'Archive'}</span>
-                          </button>
+                          {isAgency ? (
+                            <span>
+                              {lead.client_business_dna_id
+                                ? (clientNameById.get(
+                                    lead.client_business_dna_id,
+                                  ) ?? "Client brand")
+                                : (organization?.name ?? "Agency brand")}
+                            </span>
+                          ) : null}
+                          {lead.campaign_id ? (
+                            <span>
+                              {campaignNameById.get(lead.campaign_id) ??
+                                "Campaign"}
+                            </span>
+                          ) : null}
+                          <span>Score {lead.lead_score}</span>
+                          {lead.estimated_value !== null ? (
+                            <span>{formatMoney(lead.estimated_value)}</span>
+                          ) : null}
+                          {lead.next_follow_up_at ? (
+                            <span>
+                              Follow-up {formatDate(lead.next_follow_up_at)}
+                            </span>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              }) : (
+                        {lead.notes ? (
+                          <p className="lead-notes">{lead.notes}</p>
+                        ) : null}
+                      </div>
+
+                      <div className="saved-content-row__side">
+                        <small>Updated {formatDate(lead.updated_at)}</small>
+                        {canWrite ? (
+                          <div className="saved-content-row__actions">
+                            {forward ? (
+                              <button
+                                type="button"
+                                className="icon-text-button"
+                                disabled={updatingId === lead.id}
+                                onClick={() =>
+                                  patchLead(lead, { status: forward })
+                                }
+                              >
+                                {updatingId === lead.id ? (
+                                  <Loader2 className="spin" size={16} />
+                                ) : (
+                                  <CheckCircle2 size={16} />
+                                )}
+                                <span>{statusLabel(forward)}</span>
+                              </button>
+                            ) : null}
+                            <label className="task-status-select">
+                              <select
+                                value={lead.status}
+                                disabled={updatingId === lead.id}
+                                onChange={(event) =>
+                                  patchLead(lead, {
+                                    status: event.target.value as LeadStatus,
+                                  })
+                                }
+                              >
+                                {statusOptions.map((status) => (
+                                  <option
+                                    key={status.value}
+                                    value={status.value}
+                                  >
+                                    {status.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="task-status-select">
+                              <select
+                                value={lead.lead_type}
+                                disabled={updatingId === lead.id}
+                                onChange={(event) =>
+                                  patchLead(lead, {
+                                    lead_type: event.target.value as LeadType,
+                                  })
+                                }
+                              >
+                                {leadTypeOptions.map((type) => (
+                                  <option key={type.value} value={type.value}>
+                                    {type.label}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              className="icon-text-button"
+                              onClick={() => startEdit(lead)}
+                            >
+                              <Pencil size={16} />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="icon-text-button"
+                              disabled={updatingId === lead.id}
+                              onClick={() =>
+                                patchLead(lead, {
+                                  status: archived ? "new" : "archived",
+                                })
+                              }
+                            >
+                              {archived ? (
+                                <RotateCcw size={16} />
+                              ) : (
+                                <Archive size={16} />
+                              )}
+                              <span>{archived ? "Restore" : "Archive"}</span>
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </article>
+                  );
+                })
+              ) : (
                 <div className="queue-empty">
                   <CalendarDays size={20} />
-                  <span>{leads.length > 0 ? 'No leads match this filter.' : 'No leads yet.'}</span>
+                  <span>
+                    {brandLeads.length > 0
+                      ? "No leads match this filter."
+                      : "No leads yet."}
+                  </span>
                 </div>
               )}
             </div>
@@ -916,14 +1705,24 @@ export function LeadsPage() {
   );
 }
 
-function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow[]; value: string; onChange: (value: string) => void }) {
+function CampaignSelect({
+  campaigns,
+  value,
+  onChange,
+}: {
+  campaigns: CampaignRow[];
+  value: string;
+  onChange: (value: string) => void;
+}) {
   return (
     <label>
       <span>Campaign</span>
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">No campaign selected</option>
         {campaigns.map((campaign) => (
-          <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+          <option key={campaign.id} value={campaign.id}>
+            {campaign.name}
+          </option>
         ))}
       </select>
     </label>
@@ -932,35 +1731,58 @@ function CampaignSelect({ campaigns, value, onChange }: { campaigns: CampaignRow
 
 function campaignIdFromName(name: string, campaigns: CampaignRow[]) {
   const normalized = name.trim().toLowerCase();
-  if (!normalized) return '';
-  return campaigns.find((campaign) => campaign.name.trim().toLowerCase() === normalized)?.id ?? '';
+  if (!normalized) return "";
+  return (
+    campaigns.find(
+      (campaign) => campaign.name.trim().toLowerCase() === normalized,
+    )?.id ?? ""
+  );
 }
 
-function campaignMatchesBrand(campaign: CampaignRow, isAgency: boolean, brandSelectionId: string) {
+function campaignMatchesBrand(
+  campaign: CampaignRow,
+  isAgency: boolean,
+  brandSelectionId: string,
+) {
   if (!isAgency) return true;
-  if (brandSelectionId === SELF_BRAND_ID) return !campaign.client_business_dna_id;
+  if (brandSelectionId === SELF_BRAND_ID)
+    return !campaign.client_business_dna_id;
   return campaign.client_business_dna_id === brandSelectionId;
 }
 
 function mergeLeads(current: LeadRow[], nextRows: LeadRow[]) {
   const map = new Map(current.map((lead) => [lead.id, lead]));
   for (const lead of nextRows) map.set(lead.id, lead);
-  return Array.from(map.values()).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+  return Array.from(map.values()).sort(
+    (a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  );
 }
 
 function sourceKeyToLeadSource(sourceKey: string): LeadSource {
-  if (sourceKey.includes('instagram')) return 'instagram';
-  if (sourceKey.includes('facebook') || sourceKey.includes('meta')) return 'facebook';
-  if (sourceKey.includes('google_form') || sourceKey.includes('form')) return 'google_forms';
-  if (sourceKey.includes('whatsapp')) return 'whatsapp';
-  if (sourceKey.includes('google') || sourceKey.includes('tiktok') || sourceKey.includes('linkedin')) return 'ads';
-  if (sourceKey.includes('shopify')) return 'website';
-  if (sourceKey.includes('youtube')) return 'social';
-  return 'other';
+  if (sourceKey.includes("instagram")) return "instagram";
+  if (sourceKey.includes("facebook") || sourceKey.includes("meta"))
+    return "facebook";
+  if (sourceKey.includes("google_form") || sourceKey.includes("form"))
+    return "google_forms";
+  if (sourceKey.includes("whatsapp")) return "whatsapp";
+  if (
+    sourceKey.includes("google") ||
+    sourceKey.includes("tiktok") ||
+    sourceKey.includes("linkedin")
+  )
+    return "ads";
+  if (sourceKey.includes("shopify")) return "website";
+  if (sourceKey.includes("youtube")) return "social";
+  return "other";
 }
 
 function isFollowUpDue(lead: LeadRow) {
-  if (!lead.next_follow_up_at || ['won', 'lost', 'archived'].includes(lead.status)) return false;
+  if (
+    !lead.next_follow_up_at ||
+    ["won", "lost", "archived"].includes(lead.status)
+  )
+    return false;
   return new Date(lead.next_follow_up_at).getTime() <= endOfToday().getTime();
 }
 
@@ -970,7 +1792,12 @@ function endOfToday() {
   return date;
 }
 
-function boundedNumber(value: string, min: number, max: number, fallback: number) {
+function boundedNumber(
+  value: string,
+  min: number,
+  max: number,
+  fallback: number,
+) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.min(max, Math.round(parsed)));
@@ -978,16 +1805,23 @@ function boundedNumber(value: string, min: number, max: number, fallback: number
 
 function nullableMoney(value: string) {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || value.trim() === '') return null;
+  if (!Number.isFinite(parsed) || value.trim() === "") return null;
   return Math.max(0, parsed);
 }
 
 function statusLabel(value: LeadStatus) {
-  return statusOptions.find((status) => status.value === value)?.label ?? value.replace('_', ' ');
+  return (
+    statusOptions.find((status) => status.value === value)?.label ??
+    value.replace("_", " ")
+  );
 }
 
 function sourceLabel(value: LeadSource) {
-  return sourceOptions.find((source) => source.value === value)?.label ?? legacySourceLabels[value] ?? value;
+  return (
+    sourceOptions.find((source) => source.value === value)?.label ??
+    legacySourceLabels[value] ??
+    value
+  );
 }
 
 function leadTypeLabel(value: LeadType) {
@@ -995,20 +1829,33 @@ function leadTypeLabel(value: LeadType) {
 }
 
 function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(value));
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+  }).format(new Date(value));
 }
 
 function formatMoney(value: number) {
-  return new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+  return new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  }).format(value);
 }
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message) return error.message;
-  if (error && typeof error === 'object') {
+  if (error && typeof error === "object") {
     const record = error as Record<string, unknown>;
-    const parts = [record.message, record.details, record.hint, record.code]
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-    if (parts.length > 0) return parts.join(' - ');
+    const parts = [
+      record.message,
+      record.details,
+      record.hint,
+      record.code,
+    ].filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    );
+    if (parts.length > 0) return parts.join(" - ");
   }
   return fallback;
 }
