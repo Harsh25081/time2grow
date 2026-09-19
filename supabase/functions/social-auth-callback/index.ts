@@ -255,11 +255,17 @@ async function syncMetaHandles(supabase: ReturnType<typeof serviceClient>, args:
   const pages = await fetchJson(`${graphUrl('/me/accounts')}?fields=id,name,access_token,instagram_business_account{id,username}&limit=100&access_token=${encodeURIComponent(args.accessToken)}`);
   const items = Array.isArray(pages.data) ? pages.data : [];
 
+  // Track which external IDs we see from the API
+  const seenFacebookIds = new Set<string>();
+  const seenInstagramIds = new Set<string>();
+
   for (const page of items) {
     const pageId = stringValue(page.id);
     const pageName = stringValue(page.name);
     const pageToken = stringValue(page.access_token);
     if (!pageId || !pageName || !pageToken) continue;
+
+    seenFacebookIds.add(pageId);
 
     const facebookHandle = await upsertHandle(supabase, {
       orgId: args.orgId,
@@ -285,6 +291,8 @@ async function syncMetaHandles(supabase: ReturnType<typeof serviceClient>, args:
     const instagramId = instagram && typeof instagram === 'object' ? stringValue(instagram.id) : null;
     if (!instagramId) continue;
 
+    seenInstagramIds.add(instagramId);
+
     const instagramName = instagram && typeof instagram === 'object'
       ? stringValue(instagram.username) ?? `${pageName} Instagram`
       : `${pageName} Instagram`;
@@ -308,6 +316,11 @@ async function syncMetaHandles(supabase: ReturnType<typeof serviceClient>, args:
       userId: args.userId,
     });
   }
+
+  // Disable Facebook handles that the new token no longer grants access to
+  await disableStaleHandles(supabase, args.orgId, 'facebook', seenFacebookIds);
+  // Disable Instagram handles that the new token no longer grants access to
+  await disableStaleHandles(supabase, args.orgId, 'instagram', seenInstagramIds);
 }
 
 async function upsertIntegrationAccount(supabase: ReturnType<typeof serviceClient>, args: {
@@ -441,6 +454,46 @@ async function upsertHandleCredential(supabase: ReturnType<typeof serviceClient>
     .upsert(payload, { onConflict: 'distribution_handle_id,provider' });
 
   if (error) throw error;
+}
+
+async function disableStaleHandles(supabase: ReturnType<typeof serviceClient>, orgId: string, provider: string, seenExternalIds: Set<string>) {
+  if (seenExternalIds.size === 0) return 0;
+
+  // Find all currently-enabled handles for this provider in this org
+  const { data: existingHandles, error } = await supabase
+    .from('distribution_handles')
+    .select('id,external_handle_id')
+    .eq('org_id', orgId)
+    .eq('provider', provider)
+    .eq('is_enabled', true);
+
+  if (error) throw error;
+  if (!existingHandles || existingHandles.length === 0) return 0;
+
+  // Disable handles whose external_handle_id is not in the set of IDs the API returned
+  const staleIds = existingHandles
+    .filter((h: Record<string, unknown>) => h.external_handle_id && !seenExternalIds.has(String(h.external_handle_id)))
+    .map((h: Record<string, unknown>) => h.id);
+
+  if (staleIds.length === 0) return 0;
+
+  // Delete credentials for stale handles first
+  for (const staleId of staleIds) {
+    await supabase
+      .from('provider_handle_credentials')
+      .delete()
+      .eq('distribution_handle_id', staleId)
+      .eq('provider', provider);
+  }
+
+  // Disable the stale handles
+  const { error: disableError } = await supabase
+    .from('distribution_handles')
+    .update({ is_enabled: false, metadata: { source: 'reconnect_cleanup', disabled_at: new Date().toISOString() } })
+    .in('id', staleIds);
+
+  if (disableError) throw disableError;
+  return staleIds.length;
 }
 
 async function exchangeToken(provider: Provider, code: string, url: string, values: Record<string, string>) {

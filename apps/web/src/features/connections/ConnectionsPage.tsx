@@ -537,7 +537,7 @@ export function ConnectionsPage() {
       <ConfirmDialog
         isOpen={providerToDisconnect !== null}
         title={`Disconnect ${providerToDisconnect ? channelName(providerToDisconnect) : ''}?`}
-        message={`This will immediately delete all stored OAuth tokens, access credentials, and per-handle credentials for ${providerToDisconnect ? channelName(providerToDisconnect) : 'this platform'}. You can reconnect at any time to restore publishing capabilities.`}
+        message={disconnectMessage(providerToDisconnect, connectionByProvider, accountHandles)}
         confirmText="Disconnect"
         cancelText="Cancel"
         onConfirm={executeDisconnectProvider}
@@ -569,4 +569,27 @@ function normalizeDiscoveryResponse(value: unknown): DiscoveryResponse {
     imported: typeof record.imported === 'number' ? record.imported : undefined,
     message: typeof record.message === 'string' ? record.message : undefined,
   };
+}
+
+function disconnectMessage(
+  provider: Provider | null,
+  connectionByProvider: Map<Provider, ConnectionStatus>,
+  handles: Handle[],
+) {
+  if (!provider) return '';
+  const connection = connectionByProvider.get(provider);
+  const providerHandles = handles.filter((h) => h.provider === provider && h.persisted);
+  const name = channelName(provider);
+
+  const parts: string[] = [];
+  if (connection?.displayName) {
+    parts.push(`Connected account: ${connection.displayName}.`);
+  }
+  if (providerHandles.length > 0) {
+    const handleNames = providerHandles.map((h) => h.label).join(', ');
+    parts.push(`This will remove ${providerHandles.length} handle${providerHandles.length === 1 ? '' : 's'} (${handleNames}).`);
+  }
+  parts.push(`All stored OAuth tokens, access credentials, and per-handle credentials for ${name} will be deleted. You can reconnect at any time.`);
+
+  return parts.join('\n\n');
 }

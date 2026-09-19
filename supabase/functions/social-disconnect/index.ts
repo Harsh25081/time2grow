@@ -71,6 +71,18 @@ Deno.serve(async (req) => {
       throw credentialsDeleteError;
     }
 
+    // Disable distribution handles so stale pages don't persist after reconnect
+    const { error: handlesDisableError } = await supabase
+      .from('distribution_handles')
+      .update({ is_enabled: false, metadata: { source: 'disconnect', disabled_at: new Date().toISOString() } })
+      .eq('org_id', orgId)
+      .eq('provider', provider);
+
+    if (handlesDisableError) {
+      console.error('[social-disconnect] Handles disable error:', handlesDisableError);
+      throw handlesDisableError;
+    }
+
     // For Instagram, also clean up if it was connected via Facebook
     if (provider === 'instagram') {
       const { error: instagramCredentialsError } = await supabase
@@ -85,7 +97,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // For Facebook, also clean up Instagram credentials if they exist
+    // For Facebook, also clean up Instagram credentials and handles
     if (provider === 'facebook') {
       const { error: instagramCredentialsError } = await supabase
         .from('provider_handle_credentials')
@@ -96,6 +108,18 @@ Deno.serve(async (req) => {
       if (instagramCredentialsError) {
         console.error('[social-disconnect] Instagram credentials cleanup error:', instagramCredentialsError);
         throw instagramCredentialsError;
+      }
+
+      // Also disable Instagram handles since they depend on the Facebook connection
+      const { error: instagramHandlesError } = await supabase
+        .from('distribution_handles')
+        .update({ is_enabled: false, metadata: { source: 'disconnect', disabled_at: new Date().toISOString() } })
+        .eq('org_id', orgId)
+        .eq('provider', 'instagram');
+
+      if (instagramHandlesError) {
+        console.error('[social-disconnect] Instagram handles disable error:', instagramHandlesError);
+        throw instagramHandlesError;
       }
     }
 

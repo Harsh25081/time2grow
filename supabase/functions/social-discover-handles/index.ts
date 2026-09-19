@@ -81,6 +81,9 @@ async function discoverMetaHandles(supabase: ServiceClient, orgId: string, userI
   const expiresAt = stringValue(connection.expires_at);
   const scopes = stringArray(connection.scopes);
 
+  // Collect the external IDs we see from the API so we can disable stale ones
+  const seenExternalIds = new Set<string>();
+
   for (const page of items) {
     const pageId = stringValue(page.id);
     const pageName = stringValue(page.name);
@@ -88,6 +91,7 @@ async function discoverMetaHandles(supabase: ServiceClient, orgId: string, userI
     if (!pageId || !pageName || !pageToken) continue;
 
     if (requestedProvider === 'facebook') {
+      seenExternalIds.add(pageId);
       const facebookHandle = await upsertHandle(supabase, {
         orgId,
         provider: 'facebook',
@@ -105,6 +109,7 @@ async function discoverMetaHandles(supabase: ServiceClient, orgId: string, userI
     const instagramId = instagram && typeof instagram === 'object' ? stringValue(instagram.id) : null;
     if (!instagramId || requestedProvider !== 'instagram') continue;
 
+    seenExternalIds.add(instagramId);
     const instagramName = instagram && typeof instagram === 'object'
       ? stringValue(instagram.username) ?? `${pageName} Instagram`
       : `${pageName} Instagram`;
@@ -121,13 +126,26 @@ async function discoverMetaHandles(supabase: ServiceClient, orgId: string, userI
     imported.push({ provider: 'instagram', displayName: instagramName, externalHandleId: instagramId, handleType: 'instagram_business' });
   }
 
+  // Disable handles that the current token no longer has access to
+  const disabled = await disableStaleHandles(supabase, orgId, requestedProvider, seenExternalIds);
+
   await markAccountSynced(supabase, account.id);
+
+  const parts: string[] = [];
+  if (imported.length > 0) {
+    parts.push(`${imported.length} ${requestedProvider === 'facebook' ? 'Facebook Page' : 'Instagram Business account'} handle${imported.length === 1 ? '' : 's'} imported.`);
+  }
+  if (disabled > 0) {
+    parts.push(`${disabled} handle${disabled === 1 ? '' : 's'} removed (no longer accessible with this account).`);
+  }
+
   return {
     provider: requestedProvider,
     imported: imported.length,
+    disabled,
     handles: imported,
-    message: imported.length > 0
-      ? `${imported.length} ${requestedProvider === 'facebook' ? 'Facebook Page' : 'Instagram Business account'} handle${imported.length === 1 ? '' : 's'} imported.`
+    message: parts.length > 0
+      ? parts.join(' ')
       : `No ${requestedProvider === 'facebook' ? 'Facebook Pages' : 'Instagram Business accounts'} were available for this connected Meta login.`,
   };
 }
@@ -434,6 +452,46 @@ async function upsertHandleCredential(supabase: ServiceClient, args: {
 
 async function markAccountSynced(supabase: ServiceClient, integrationAccountId: string) {
   await supabase.from('integration_accounts').update({ last_sync_at: new Date().toISOString(), status: 'connected', token_status: 'active' }).eq('id', integrationAccountId);
+}
+
+async function disableStaleHandles(supabase: ServiceClient, orgId: string, provider: Provider, seenExternalIds: Set<string>) {
+  if (seenExternalIds.size === 0) return 0;
+
+  // Find all currently-enabled handles for this provider in this org
+  const { data: existingHandles, error } = await supabase
+    .from('distribution_handles')
+    .select('id,external_handle_id')
+    .eq('org_id', orgId)
+    .eq('provider', provider)
+    .eq('is_enabled', true);
+
+  if (error) throw error;
+  if (!existingHandles || existingHandles.length === 0) return 0;
+
+  // Disable handles whose external_handle_id is not in the set of IDs the API returned
+  const staleIds = existingHandles
+    .filter((h) => h.external_handle_id && !seenExternalIds.has(h.external_handle_id))
+    .map((h) => h.id);
+
+  if (staleIds.length === 0) return 0;
+
+  // Delete credentials for stale handles first
+  for (const staleId of staleIds) {
+    await supabase
+      .from('provider_handle_credentials')
+      .delete()
+      .eq('distribution_handle_id', staleId)
+      .eq('provider', provider);
+  }
+
+  // Disable the stale handles
+  const { error: disableError } = await supabase
+    .from('distribution_handles')
+    .update({ is_enabled: false, metadata: { source: 'discovery_cleanup', disabled_at: new Date().toISOString() } })
+    .in('id', staleIds);
+
+  if (disableError) throw disableError;
+  return staleIds.length;
 }
 
 async function fetchJson(url: string, init?: RequestInit) {
